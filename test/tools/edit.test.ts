@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { readFile, writeFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 import Ajv from "ajv";
 import {
   assertEditRequest,
   hashlineEditToolSchema,
+  prepareEditArguments,
   registerEditTool,
 } from "../../src/edit";
 import { computeLineHash } from "../../src/hashline";
@@ -16,7 +17,7 @@ describe("assertEditRequest", () => {
     ).toThrow(/unknown or unsupported fields/i);
   });
 
-  it("accepts complete legacy replace fields when edits is absent", () => {
+  it("accepts hidden complete legacy replace fields when edits is absent", () => {
     expect(() =>
       assertEditRequest({
         path: "a.ts",
@@ -42,7 +43,7 @@ describe("assertEditRequest", () => {
     ).toThrow(/cannot mix legacy camelCase and snake_case/i);
   });
 
-  it("lets assertEditRequest report mixed legacy-key semantics after schema validation", () => {
+  it("still reports mixed legacy-key semantics explicitly after schema tightening", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
     const payload = {
@@ -52,7 +53,7 @@ describe("assertEditRequest", () => {
       new_text: "after",
     };
 
-    expect(validate(payload)).toBeTrue();
+    expect(validate(payload)).toBeFalse();
     expect(() => assertEditRequest(payload as any)).toThrow(
       /cannot mix legacy camelCase and snake_case/i,
     );
@@ -76,14 +77,15 @@ describe("assertEditRequest", () => {
     ).toThrow(/requires a "pos" anchor string/i);
   });
 
-  it("rejects non-string legacy key values", () => {
-    expect(() =>
-      assertEditRequest({
-        path: "a.ts",
-        edits: [{ op: "replace", pos: "1#ZZ", lines: ["x"] }],
-        oldText: 123,
-      } as any),
-    ).toThrow(/must be a string/i);
+  it("rejects non-string legacy key values after prepareEditArguments normalization", () => {
+    const prepared = prepareEditArguments({
+      path: "a.ts",
+      edits: [{ op: "replace", pos: "1#ZZ", lines: ["x"] }],
+      oldText: 123,
+    });
+    expect(() => assertEditRequest(prepared)).toThrow(
+      /must be a string/i,
+    );
   });
 });
 
@@ -121,7 +123,7 @@ describe("registerEditTool", () => {
     ).toBeTrue();
   });
 
-  it("publishes a schema that validates top-level camelCase legacy payloads", () => {
+  it("publishes a schema that rejects top-level camelCase legacy payloads", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
 
@@ -131,10 +133,10 @@ describe("registerEditTool", () => {
         oldText: "before",
         newText: "after",
       }),
-    ).toBeTrue();
+    ).toBeFalse();
   });
 
-  it("publishes a schema that validates top-level snake_case legacy payloads", () => {
+  it("publishes a schema that rejects top-level snake_case legacy payloads", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
 
@@ -144,10 +146,10 @@ describe("registerEditTool", () => {
         old_text: "before",
         new_text: "after",
       }),
-    ).toBeTrue();
+    ).toBeFalse();
   });
 
-  it("publishes a schema that validates strict edits mixed with top-level legacy fields", () => {
+  it("publishes a schema that rejects strict edits mixed with top-level legacy fields", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
 
@@ -158,7 +160,7 @@ describe("registerEditTool", () => {
         oldText: "before",
         newText: "after",
       }),
-    ).toBeTrue();
+    ).toBeFalse();
   });
 
   it("publishes a top-level object schema for pi tool registration", () => {
@@ -166,23 +168,22 @@ describe("registerEditTool", () => {
     expect((hashlineEditToolSchema as any).anyOf).toBeUndefined();
   });
 
-  it("keeps legacy top-level fields enumerable through structuredClone", () => {
+  it("prepareEditArguments hides legacy top-level fields while keeping execute compatibility", () => {
     const ajv = new Ajv({ allErrors: true });
     const validate = ajv.compile(hashlineEditToolSchema as any);
-    const payload = {
+    const prepared = prepareEditArguments({
       path: "a.ts",
       oldText: "before",
       newText: "after",
-    };
-    const cloned = structuredClone(payload);
+    }) as Record<string, unknown>;
 
-    expect(validate(cloned)).toBeTrue();
-    expect(cloned.oldText).toBe("before");
-    expect(cloned.newText).toBe("after");
-    expect(Object.keys(cloned)).toEqual(["path", "oldText", "newText"]);
+    expect(validate(prepared)).toBeTrue();
+    expect(prepared.oldText).toBe("before");
+    expect(prepared.newText).toBe("after");
+    expect(Object.keys(prepared)).toEqual(["path"]);
   });
 
-  it("registers the edit tool without a prepareArguments compatibility shim", () => {
+  it("registers prepareArguments so new pi runtimes can normalize resumed legacy calls before validation", () => {
     let registered:
       | {
           parameters?: any;
@@ -201,36 +202,18 @@ describe("registerEditTool", () => {
     registerEditTool(pi);
 
     expect(registered?.parameters).toEqual(hashlineEditToolSchema);
-    expect(registered?.prepareArguments).toBeUndefined();
-  });
-
-  it("executes fuzzy legacy top-level replace through the compatibility path", async () => {
-    await withTempFile("legacy.txt", "alpha\nconsole.log(“hi”)\nomega\n", async ({ cwd, path }) => {
-      const { pi, getTool } = makeFakePiRegistry();
-      registerEditTool(pi);
-      const editTool = getTool("edit");
-
-      const result = await editTool.execute(
-        "legacy-1",
-        {
-          path: "legacy.txt",
-          oldText: "console.log(\"hi\")",
-          newText: "console.log(\"bye\")",
-        },
-        undefined,
-        undefined,
-        { cwd } as any,
-      );
-
-      expect(await readFile(path, "utf-8")).toBe("alpha\nconsole.log(\"bye\")\nomega\n");
-      expect(result.details?.compatibility).toEqual({
-        used: true,
-        strategy: "legacy-top-level-replace",
-        matchCount: 1,
-        fuzzyMatch: true,
-      });
-      expect(result.details?.metrics?.legacy_replace).toBeTrue();
-    });
+    expect(typeof registered?.prepareArguments).toBe("function");
+    expect(
+      (registered?.prepareArguments as (args: unknown) => unknown)({
+        path: "a.ts",
+        oldText: "before",
+        newText: "after",
+      }),
+    ).toEqual(prepareEditArguments({
+      path: "a.ts",
+      oldText: "before",
+      newText: "after",
+    }));
   });
 
   it("renders details diff while keeping diff out of LLM-visible text", async () => {
