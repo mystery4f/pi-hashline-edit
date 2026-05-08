@@ -1,7 +1,7 @@
-import { StringEnum } from "@mariozechner/pi-ai";
-import { Markdown, Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI, ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Markdown, Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { constants } from "fs";
 import { readFileSync } from "fs";
@@ -195,65 +195,30 @@ function getVisibleLines(text: string): string[] {
   return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
 
-
-function withHiddenStringProperty(
-  target: Record<string, unknown>,
-  key: typeof LEGACY_KEYS[number],
-  value: string,
-): void {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: false,
-    configurable: true,
-    writable: true,
-  });
-}
-
-/**
- * Normalise raw tool-call arguments before validation and execution.
- *
- * In newer pi runtimes this is registered as `prepareArguments` so it runs
- * before schema validation, letting old-session payloads with top-level
- * `oldText/newText` continue to work without exposing those fields in the
- * public tool schema.
- *
- * The legacy fields are stored as non-enumerable properties so they pass
- * through `Object.keys()` and `JSON.stringify()` silently while still being
- * accessible to `assertEditRequest` and `extractLegacyTopLevelReplace`.
- */
+// Non-enumerable so AJV (additionalProperties: false) ignores them,
+// while hasOwnProperty checks in assertEditRequest still find them.
 export function prepareEditArguments(args: unknown): unknown {
   if (!isRecord(args)) {
     return args;
   }
 
-  const hasAnyLegacyKey = LEGACY_KEYS.some((key) => hasOwn(args, key));
-  if (!hasAnyLegacyKey) {
+  const legacyPresent = LEGACY_KEYS.filter((key) => hasOwn(args, key));
+  if (legacyPresent.length === 0) {
     return args;
   }
 
-  const prepared: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (!LEGACY_KEYS.includes(key as typeof LEGACY_KEYS[number])) {
-      prepared[key] = value;
-    }
-  }
+  const legacySet = new Set<string>(legacyPresent);
+  const prepared = Object.fromEntries(
+    Object.entries(args).filter(([key]) => !legacySet.has(key)),
+  );
 
-  for (const legacyKey of LEGACY_KEYS) {
-    if (!hasOwn(args, legacyKey)) continue;
-    const value = args[legacyKey];
-    if (typeof value === "string") {
-      withHiddenStringProperty(prepared, legacyKey, value);
-    } else {
-      // Preserve non-string legacy values as non-enumerable so
-      // assertEditRequest can reject them with a clear type error
-      // instead of silently dropping them.
-      Object.defineProperty(prepared, legacyKey, {
-        value,
-        enumerable: false,
-        configurable: true,
-        writable: true,
-      });
-    }
+  for (const key of legacyPresent) {
+    Object.defineProperty(prepared, key, {
+      value: args[key],
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
   }
 
   return prepared;

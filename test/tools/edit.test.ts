@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { writeFile } from "fs/promises";
 import Ajv from "ajv";
 import {
@@ -53,7 +53,7 @@ describe("assertEditRequest", () => {
       new_text: "after",
     };
 
-    expect(validate(payload)).toBeFalse();
+    expect(validate(payload)).toBe(false);
     expect(() => assertEditRequest(payload as any)).toThrow(
       /cannot mix legacy camelCase and snake_case/i,
     );
@@ -120,7 +120,7 @@ describe("registerEditTool", () => {
         path: "a.ts",
         edits: [{ op: "replace", pos: "1#ZZ", lines: ["x"] }],
       }),
-    ).toBeTrue();
+    ).toBe(true);
   });
 
   it("publishes a schema that rejects top-level camelCase legacy payloads", () => {
@@ -133,7 +133,7 @@ describe("registerEditTool", () => {
         oldText: "before",
         newText: "after",
       }),
-    ).toBeFalse();
+    ).toBe(false);
   });
 
   it("publishes a schema that rejects top-level snake_case legacy payloads", () => {
@@ -146,7 +146,7 @@ describe("registerEditTool", () => {
         old_text: "before",
         new_text: "after",
       }),
-    ).toBeFalse();
+    ).toBe(false);
   });
 
   it("publishes a schema that rejects strict edits mixed with top-level legacy fields", () => {
@@ -160,7 +160,7 @@ describe("registerEditTool", () => {
         oldText: "before",
         newText: "after",
       }),
-    ).toBeFalse();
+    ).toBe(false);
   });
 
   it("publishes a top-level object schema for pi tool registration", () => {
@@ -177,7 +177,7 @@ describe("registerEditTool", () => {
       newText: "after",
     }) as Record<string, unknown>;
 
-    expect(validate(prepared)).toBeTrue();
+    expect(validate(prepared)).toBe(true);
     expect(prepared.oldText).toBe("before");
     expect(prepared.newText).toBe("after");
     expect(Object.keys(prepared)).toEqual(["path"]);
