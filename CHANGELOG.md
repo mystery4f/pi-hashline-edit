@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.6.1] - 2026-05-10
+
+### Fixed
+
+- Align rendered line numbers in hashline output.
+- Restore schema-level legacy edit fields without non-enumerable payload hacks.
+
+### Changed
+
+- Migrate npm package scope to `@earendil-works`.
+- Switch development tooling back to npm and Vitest, removing the stale Bun lockfile.
+
+### Documentation
+
+- Update README and changelog notes for the npm and Vitest migration.
+
+### Tests
+
+- Add edit preview coverage for the fuzzy quote compatibility path.
+
 ## [0.6.0] - 2026-04-24
 
 ### Added
