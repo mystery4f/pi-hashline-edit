@@ -8,6 +8,14 @@ Every line returned by `read` carries a short content hash. Edits reference thes
 
 Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
+## Differences from upstream
+
+This is a fork of the original [pi-hashline-edit](https://github.com/earendil-works/pi-hashline-edit). The core protocol (hash-anchored reads, stale-anchor rejection, atomic writes) is unchanged. Our changes focus on reducing model confusion:
+
+- **Richer prompts.** Multi-line `replace` examples, rules explaining how fields compose (anchors define the span, `lines` defines the replacement), and clearer field descriptions.
+- **Simplified published schema.** Deprecated legacy fields and unused `lines` type variants hidden from the model's view of the tool signature while remaining accepted at runtime.
+- **Symmetric boundary-duplication detection.** Runtime warnings for both directions, not just the trailing-boundary case.
+
 ## Installation
 
 ```bash
