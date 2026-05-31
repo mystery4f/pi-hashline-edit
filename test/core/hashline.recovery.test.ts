@@ -24,7 +24,7 @@ describe("applyHashlineEdits — error handling", () => {
   it("throws on out-of-range line", () => {
     const content = "aaa\nbbb";
     const edits: HashlineEdit[] = [
-      { op: "replace", pos: { line: 99, hash: "ZZ" }, lines: ["x"] },
+      { op: "replace", pos: { line: 99, hash: "AB" }, lines: ["x"] },
     ];
     expect(() => applyHashlineEdits(content, edits)).toThrow(/does not exist/);
   });
@@ -56,11 +56,11 @@ describe("applyHashlineEdits — error handling", () => {
       applyHashlineEdits("aaa", [
         {
           op: "replace",
-          pos: { line: 1, hash: "ZZ" },
+          pos: { line: 1, hash: "AB" },
           lines: ["bbb"],
         } as any,
       ]),
-    ).toThrow(/>>> 1#[A-Z]{2}:aaa/);
+    ).toThrow(/>>> 1#[0-9A-F]{2}:aaa/);
   });
 
   it("retains still-valid range endpoints in retry snippets", () => {
@@ -71,7 +71,7 @@ describe("applyHashlineEdits — error handling", () => {
       applyHashlineEdits(content, [
         {
           op: "replace",
-          pos: { line: 1, hash: "ZZ" },
+          pos: { line: 1, hash: "AB" },
           end: validEnd,
           lines: ["AAA"],
         },
@@ -182,7 +182,9 @@ describe("applyHashlineEdits — heuristics", () => {
     expect(result.content).toBe(
       "before();\nbefore();\nif (ok) {\n  runSafe();\n}\nafter();",
     );
-    expect(result.warnings).toBeUndefined();
+    expect(result.warnings?.[0]).toContain(
+      "Potential boundary duplication before",
+    );
   });
 
   it("does not auto-correct escaped tab indentation even when the env flag is set", () => {
@@ -305,7 +307,7 @@ describe("integration: resolveEditAnchors → applyHashlineEdits", () => {
     const line = 'he said "hi"';
     const content = `${line}\nkeep`;
     const actualHash = computeLineHash(1, line);
-    const arbitraryHash = actualHash === "ZZ" ? "PP" : "ZZ";
+    const arbitraryHash = actualHash === "AB" ? "CD" : "AB";
     const staleWithHint = `1#${arbitraryHash}:${line}`;
     const toolEdits: HashlineToolEdit[] = [
       { op: "replace", pos: staleWithHint, lines: ["HELLO"] },

@@ -161,7 +161,7 @@ describe("chained edit anchors", () => {
         ctx,
       );
 
-      // Should have anchors, but none should be an empty sentinel like "3#XX:"
+      // Should have anchors, but none should be an empty sentinel like "3#09:"
       expect(editResult.content[0].text).toContain("--- Anchors");
       const anchorLines = editResult.content[0].text
         .split("\n")

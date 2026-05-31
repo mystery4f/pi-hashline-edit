@@ -1,25 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { hashlineParseText, parseLineRef } from "../../src/hashline";
+import { hashlineParseText, parseLineRef, computeLineHash } from "../../src/hashline";
 
 describe("parseLineRef", () => {
   it("parses standard LINE#HASH format", () => {
-    const ref = parseLineRef("5#MQ");
-    expect(ref).toEqual({ line: 5, hash: "MQ" });
+    const hash = computeLineHash(5, "hello");
+    const ref = parseLineRef(`5#${hash}`);
+    expect(ref).toEqual({ line: 5, hash });
   });
 
   it("parses with trailing content", () => {
-    const ref = parseLineRef("10#ZP:  const x = 1;");
-    expect(ref).toEqual({ line: 10, hash: "ZP" });
+    const ref = parseLineRef("10#A4:  const x = 1;");
+    expect(ref).toEqual({ line: 10, hash: "A4" });
   });
 
   it("tolerates leading >>> markers", () => {
-    const ref = parseLineRef(">>> 5#MQ:content");
-    expect(ref).toEqual({ line: 5, hash: "MQ" });
+    const ref = parseLineRef(">>> 5#3F:content");
+    expect(ref).toEqual({ line: 5, hash: "3F" });
   });
 
   it("tolerates leading +/- diff markers", () => {
-    expect(parseLineRef("+5#MQ")).toEqual({ line: 5, hash: "MQ" });
-    expect(parseLineRef("-5#MQ")).toEqual({ line: 5, hash: "MQ" });
+    const hash = computeLineHash(5, "content");
+    expect(parseLineRef(`+5#${hash}`)).toEqual({ line: 5, hash });
+    expect(parseLineRef(`-5#${hash}`)).toEqual({ line: 5, hash });
   });
 
   it("throws on invalid format", () => {
@@ -35,7 +37,7 @@ describe("parseLineRef", () => {
   });
 
   it("diagnoses invalid hash alphabet", () => {
-    expect(() => parseLineRef("12#ab")).toThrow(/alphabet ZPMQVRWSNKTXJBYH only/i);
+    expect(() => parseLineRef("12#ab")).toThrow(/alphabet 0-9 A-F only/i);
   });
 
   it("diagnoses invalid hash length", () => {
@@ -86,23 +88,23 @@ describe("hashlineParseText", () => {
   });
 
   it("rejects array input that contains LINE#HASH: prefixes", () => {
-    expect(() => hashlineParseText(["1#ZZ:foo", "2#MQ:bar"])).toThrow(/^\[E_INVALID_PATCH\]/);
+    expect(() => hashlineParseText(["1#D8:foo", "2#3F:bar"])).toThrow(/^\[E_INVALID_PATCH\]/);
   });
 
   it("rejects diff-preview hunks with + and context hash prefixes", () => {
     expect(() =>
-      hashlineParseText([" 9#MQ:keep", "+10#VR:new", " 11#WS:after"]),
+      hashlineParseText([" 9#3F:keep", "+10#B2:new", " 11#C7:after"]),
     ).toThrow(/^\[E_INVALID_PATCH\]/);
   });
 
   it("rejects diff-preview deletion rows", () => {
     expect(() =>
-      hashlineParseText([" 9#MQ:keep", "-10    old", " 11#WS:after"]),
+      hashlineParseText([" 9#3F:keep", "-10    old", " 11#C7:after"]),
     ).toThrow(/^\[E_INVALID_PATCH\]/);
   });
 
   it("rejects string-form rendered diff hunks", () => {
-    const input = " 9#MQ:keep\n-10    old\n+10#VR:new\n 11#WS:after";
+    const input = " 9#3F:keep\n-10    old\n+10#B2:new\n 11#C7:after";
     expect(() => hashlineParseText(input)).toThrow(/^\[E_INVALID_PATCH\]/);
   });
 });

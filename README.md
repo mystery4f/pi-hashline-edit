@@ -15,6 +15,7 @@ This is a fork of the original [pi-hashline-edit](https://github.com/earendil-wo
 - **Richer prompts.** Multi-line `replace` examples, rules explaining how fields compose (anchors define the span, `lines` defines the replacement), and clearer field descriptions.
 - **Simplified published schema.** Deprecated legacy fields and unused `lines` type variants hidden from the model's view of the tool signature while remaining accepted at runtime.
 - **Symmetric boundary-duplication detection.** Runtime warnings for both directions, not just the trailing-boundary case.
+- **Standard hex hash alphabet.** Replaces the custom `ZPMQVRWSNKTXJBYH` alphabet with 0-9 A-F. Individual hex pairs are more likely to be single tokens (e.g. `A4`, `FF`, `2B`). This is a profiling experiment — if you encounter edit errors that seem tied to hex anchors confusing the model, please open an issue.
 
 ## Installation
 

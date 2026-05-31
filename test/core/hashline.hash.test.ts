@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { applyHashlineEdits, computeLineHash, hashlineParseText } from "../../src/hashline";
 
 describe("computeLineHash", () => {
-  it("returns a 2-character string from NIBBLE_STR alphabet", () => {
+  it("returns a 2-character hex string", () => {
     const hash = computeLineHash(1, "hello");
     expect(hash).toHaveLength(2);
-    expect(hash).toMatch(/^[ZPMQVRWSNKTXJBYH]{2}$/);
+    expect(hash).toMatch(/^[0-9A-F]{2}$/);
   });
 
   it("trims trailing whitespace without collapsing internal spaces", () => {
@@ -17,15 +17,16 @@ describe("computeLineHash", () => {
     expect(computeLineHash(1, "hello\r")).toBe(computeLineHash(1, "hello"));
   });
 
-  it("mixes line index for symbol-only lines", () => {
+  it("always incorporates line index", () => {
     const h1 = computeLineHash(1, "}");
     const h10 = computeLineHash(10, "}");
-    expect(h1).toMatch(/^[ZPMQVRWSNKTXJBYH]{2}$/);
-    expect(h10).toMatch(/^[ZPMQVRWSNKTXJBYH]{2}$/);
+    expect(h1).toMatch(/^[0-9A-F]{2}$/);
+    expect(h10).toMatch(/^[0-9A-F]{2}$/);
   });
 
-  it("does NOT mix line index for lines with alphanumeric content", () => {
-    expect(computeLineHash(1, "function foo()")).toBe(
+  it("produces different hashes for same content at different indices", () => {
+    // lineIndex is always incorporated — same content, different position = different hash
+    expect(computeLineHash(1, "function foo()")).not.toBe(
       computeLineHash(99, "function foo()"),
     );
   });

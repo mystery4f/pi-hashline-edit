@@ -1,13 +1,13 @@
 /**
  * Hashline engine — hash-anchored line editing.
  *
- * Vendored & adapted from oh-my-pi (MIT, github.com/can1357/oh-my-pi).
+ * Originally vendored & adapted from oh-my-pi (MIT, github.com/can1357/oh-my-pi).
+ * Hash algorithm replaced with inline FNV-1a; lineIndex always incorporated.
  */
 
-import * as XXH from "xxhashjs";
 import { throwIfAborted } from "./runtime";
 
-// ─── Types ──────────────────────────────────────────────────────────────
+// --- Types ---
 
 export type Anchor = { line: number; hash: string; textHint?: string };
 export type HashlineEdit =
@@ -28,25 +28,20 @@ interface NoopEdit {
   currentContent: string;
 }
 
-// ─── Hash computation ───────────────────────────────────────────────────
+// --- Hash computation ---
 
-/**
- * Custom 16-character hash alphabet. Deliberately excludes:
- * - Hex digits A–F (prevents confusion with hex literals in code)
- * - Visually confusable letters: D, G, I, L, O (look like digits 0, 6, 1, 1, 0)
- * - Common vowels A, E, I, O, U (prevents accidental English words)
- *
- * This makes hash references like "5#MQ" unambiguous — they can never be
- * mistaken for code content, hex literals, or natural language.
- */
-const NIBBLE_STR = "ZPMQVRWSNKTXJBYH";
-const HASH_ALPHABET_RE = new RegExp(`^[${NIBBLE_STR}]+$`);
+const HEX = "0123456789ABCDEF";
+const HASH_ALPHABET_RE = /^[0-9A-F]+$/;
 
 const DICT = Array.from({ length: 256 }, (_, i) => {
   const h = i >>> 4;
   const l = i & 0x0f;
-  return `${NIBBLE_STR[h]}${NIBBLE_STR[l]}`;
+  return `${HEX[h]}${HEX[l]}`;
 });
+
+// FNV-1a 32-bit constants
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
 
 /**
  * Patterns used to detect (and reject) hashline display prefixes inside edit
@@ -54,25 +49,19 @@ const DICT = Array.from({ length: 256 }, (_, i) => {
  * file content. Matching any of these triggers `[E_INVALID_PATCH]`.
  */
 const HASHLINE_PREFIX_RE =
-  /^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}:/;
+  /^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[0-9A-F]{2}:/;
 const HASHLINE_PREFIX_PLUS_RE =
-  /^\+\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}:/;
+  /^\+\s*(?:\d+\s*#\s*|#\s*)[0-9A-F]{2}:/;
 const DIFF_MINUS_RE = /^-\s*\d+\s{4}/;
-
-/** Lines containing no alphanumeric characters (only punctuation/symbols/whitespace). */
-const RE_SIGNIFICANT = /[\p{L}\p{N}]/u;
-
-function xxh32(input: string, seed = 0): number {
-  return XXH.h32(seed).update(input).digest().toNumber() >>> 0;
-}
 
 export function computeLineHash(idx: number, line: string): string {
   line = line.replace(/\r/g, "").trimEnd();
-  let seed = 0;
-  if (!RE_SIGNIFICANT.test(line)) {
-    seed = idx;
+  // FNV-1a with lineIndex incorporated unconditionally
+  let hash = (FNV_OFFSET ^ idx) >>> 0;
+  for (let i = 0; i < line.length; i++) {
+    hash = Math.imul(hash ^ line.charCodeAt(i), FNV_PRIME);
   }
-  return DICT[xxh32(line, seed) & 0xff];
+  return DICT[hash & 0xff];
 }
 
 /** Shared fuzzy-match Unicode replacement regexes (also used by edit-diff.ts). */
@@ -118,10 +107,10 @@ function diagnoseLineRef(ref: string): string {
       return `[E_BAD_REF] Line number must be >= 1, got ${line} in "${ref}".`;
     }
     if (hash.length !== 2) {
-      return `[E_BAD_REF] Invalid line reference "${ref}": hash must be exactly 2 characters from ${NIBBLE_STR}.`;
+      return `[E_BAD_REF] Invalid line reference "${ref}": hash must be exactly 2 characters from 0-9 A-F.`;
     }
     if (!HASH_ALPHABET_RE.test(hash)) {
-      return `[E_BAD_REF] Invalid line reference "${ref}": hash uses invalid characters, hashes use alphabet ${NIBBLE_STR} only.`;
+      return `[E_BAD_REF] Invalid line reference "${ref}": hash uses invalid characters, hashes use alphabet 0-9 A-F only.`;
     }
   }
 
@@ -159,12 +148,12 @@ function parseAnchorRef(ref: string): Anchor {
 
   const hash = match[2]!;
   if (hash.length !== 2) {
-    throw new Error(`[E_BAD_REF] Invalid line reference "${ref}": hash must be exactly 2 characters from ${NIBBLE_STR}.`);
+    throw new Error(`[E_BAD_REF] Invalid line reference "${ref}": hash must be exactly 2 characters from 0-9 A-F.`);
   }
 
   if (!HASH_ALPHABET_RE.test(hash)) {
     throw new Error(
-      `[E_BAD_REF] Invalid line reference "${ref}": hash uses invalid characters, hashes use alphabet ${NIBBLE_STR} only.`,
+      `[E_BAD_REF] Invalid line reference "${ref}": hash uses invalid characters, hashes use alphabet 0-9 A-F only.`,
     );
   }
 
@@ -823,18 +812,36 @@ export function applyHashlineEdits(
         } else if (!validate(edit.pos)) {
           continue;
         }
+        const startLine = edit.pos.line;
         const endLine = edit.end?.line ?? edit.pos.line;
+
+        // Variant B: last line of replacement matches next surviving line
         const nextLine = lineIndex.fileLines[endLine];
         const replacementLastLine = edit.lines.at(-1)?.trim();
         if (
           nextLine !== undefined &&
           replacementLastLine &&
-          RE_SIGNIFICANT.test(replacementLastLine) &&
+          /[\p{L}\p{N}]/u.test(replacementLastLine) &&
           replacementLastLine === nextLine.trim()
         ) {
           warnings.push(
             `Potential boundary duplication after ${describeEdit(edit)}: the replacement ends with a line that matches the next surviving line after trim.`,
           );
+        }
+
+        // Variant A: first line of replacement matches preceding line
+        if (startLine > 1) {
+          const prevLine = lineIndex.fileLines[startLine - 2];
+          const replacementFirstLine = edit.lines[0]?.trim();
+          if (
+            replacementFirstLine &&
+            /[\p{L}\p{N}]/u.test(replacementFirstLine) &&
+            replacementFirstLine === prevLine.trim()
+          ) {
+            warnings.push(
+              `Potential boundary duplication before ${describeEdit(edit)}: the replacement starts with a line that matches the preceding line after trim.`,
+            );
+          }
         }
         break;
       }
