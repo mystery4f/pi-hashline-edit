@@ -54,7 +54,7 @@ describe("strict hashline contract", () => {
     };
 
     expect(() => applyHashlineEdits(content, [stale as any])).toThrow(
-      /1 stale anchor\./,
+      /1 stale anchor: 3#[0-9A-F]+\./,
     );
   });
 });

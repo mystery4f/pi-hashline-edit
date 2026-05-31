@@ -194,8 +194,9 @@ function formatMismatchError(
   const sorted = [...displayLines].sort((a, b) => a - b);
   const maxDisplayLine = sorted[sorted.length - 1] ?? 1;
   const lineNumberWidth = String(maxDisplayLine).length;
+  const anchorList = mismatches.map((m) => `${m.line}#${m.expected}`).join(", ");
   const out: string[] = [
-    `[E_STALE_ANCHOR] ${mismatches.length} stale anchor${mismatches.length > 1 ? "s" : ""}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.`,
+    `[E_STALE_ANCHOR] ${mismatches.length} stale anchor${mismatches.length > 1 ? "s" : ""}: ${anchorList}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.`,
     "",
   ];
 
