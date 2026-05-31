@@ -17,8 +17,30 @@ function hello() {
   console.log("hello");
 }
 
+// filler line 1
+// filler line 2
+// filler line 3
+// filler line 4
+// filler line 5
+// filler line 6
+// filler line 7
+// filler line 8
+// filler line 9
+// filler line 10
+// filler line 11
+// filler line 12
+// filler line 13
+// filler line 14
+// filler line 15
+// filler line 16
+// filler line 17
+// filler line 18
+// filler line 19
+// filler line 20
+
 function goodbye() {
   console.log("goodbye");
+  console.log("see ya");
 }
 
 export { hello, goodbye };
@@ -35,86 +57,103 @@ Afterward, the file should contain `hi` instead of `hello` on that line, and not
 
 ### 2. Replace several lines
 
-Replace the entire `goodbye` function body (the three lines including the empty line before `export`) with:
+Read `test-file.ts`. Target the two inner lines of the `goodbye` function — `console.log("goodbye");` and `console.log("see ya");` — and replace them with:
 
 ```
   console.log("farewell");
   console.log("adios");
-}
 ```
 
-Afterward, the file should contain these three lines where the old `goodbye` function used to be.
+Afterward, the `goodbye` function should contain these two new lines and its closing `}` should still be intact.
 
 ### 3. Delete lines
 
 Remove the blank line and the `export` line at the bottom of the file, in one edit.
-Afterward, the file should end right after the closing `}` of whichever function is last.
+Afterward, the file should end right after the closing `}` of the `goodbye` function.
+
+### 4. Diff view on a successful edit
+
+Make any successful edit. Verify the response text shows a unified diff with:
+- Context lines in the form ` NN#HH:content`
+- Removed lines in the form `-NN   :content` (no hash)
+- Added lines in the form `+NN#HH:content`
+
+The colons should be vertically aligned. The diff should show only the changed region plus a few lines of surrounding context.
+
+### 5. Multiple far-apart edits in one request
+
+Reset `test-file.ts` to the original content. In a single edit request with two entries:
+- Change `console.log("hello");` to `console.log("hi");`
+- Change `console.log("goodbye");` to `console.log("ciao");`
+
+Both changes should apply. The diff output should contain **two separate hunks** (look for two `@@` headers). Verify the file contains both `hi` and `ciao` after the edit.
 
 ---
 
 ## Error Handling
 
-### 4. Stale anchor
+### 6. Stale anchor
 
 Read `test-file.ts`. Then use the bash tool to prepend a comment like `// modified` to the top of the file.
 Now attempt an edit using the anchors from your earlier read.
 
 Expected: the edit fails with `[E_STALE_ANCHOR]`. The error includes current anchors for the affected lines. Copy them and retry — the retry should succeed.
 
-### 5. Backwards range
+### 7. Backwards range
 
 Attempt an edit where the range endpoint anchor comes from an earlier line than the start anchor.
 Expected: `[E_BAD_RANGE]` with an explanation.
 
-### 6. Missing fields
+### 8. Missing fields
 
 Send an edit request with no `path`, or with `edits` omitted.
 Expected: a clear error, not a crash.
 
-### 7. LINE#HASH prefix in lines
+### 9. LINE#HASH prefix in lines
 
 Read `test-file.ts`, then send an edit where `lines` contains content copied directly from the read output — with `LINE#HASH:` prefixes.
 Expected: `[E_INVALID_PATCH]`. The model must strip the prefixes before sending.
 
-### 8. Rendered output in lines
+### 10. Rendered output in lines
 
 Read `test-file.ts`, then send an edit where `lines` contains content copied directly from the read or diff output — with `LINE#HASH:` prefixes, `+12#A4:` diff-added hashline lines, or `-12    old` diff-context headers.
 Expected: `[E_INVALID_PATCH]`. The model must strip display prefixes before sending.
 
-### 9. Overlapping ranges
+### 11. Overlapping ranges
 
 Send two edits in one request whose ranges overlap. For example, one targeting lines 2–5 and another targeting 4–7.
 Expected: rejected with an error about overlapping or conflicting ranges.
 
-### 10. Read a directory
+### 12. Read a directory
 
 Try reading a directory path instead of a file.
 Expected: the error shows the directory listing, so you can pick a file directly without running `ls`.
 
 ---
+
 ## Edge Cases
 
-### 6. Insert at start of file
+### 13. Insert at start of file
 
 Add new content before the existing first line. For example, prepend a `// Copyright ...` comment.
 The original line 1 should still be in the file, just pushed down.
 
-### 7. Insert at end of file
+### 14. Insert at end of file
 
 Add new content after the last line. For example, append a blank line and a trailing comment.
 The original last line should still be in the file, directly before the new content.
 
-### 8. Read raw then edit
+### 15. Read raw then edit
 
 Read `test-file.ts` in raw mode. Then attempt an edit on it.
 What happens? (Think about where your anchors come from.)
 
-### 9. Multi-element lines array
+### 16. Multi-element lines array
 
 Edit a range, placing at least three distinct lines into the `lines` array (not one string with `\n`).
 Afterward, all three lines should appear in the file as separate lines.
 
-### 10. Delete one line
+### 17. Delete one line
 
 Pick any line and remove it from the file in a single edit. Do not replace it with a blank line — the line should be gone.
 

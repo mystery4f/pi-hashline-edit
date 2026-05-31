@@ -159,4 +159,45 @@ describe("snapshotId surface (details-only after W2)", () => {
       },
     );
   });
+
+  it("de-duplicates identical stale anchors in single-line range [X, X]", async () => {
+    await withTempFile(
+      "sample.txt",
+      "one\ntwo\nthree\n",
+      async ({ cwd, path }) => {
+        const { pi, getTool } = makeFakePiRegistry();
+        register(pi);
+        const editTool = getTool("edit");
+
+        await writeFile(path, "one\nTWO!\nthree\n", "utf-8");
+
+        let errorMessage = "";
+        try {
+          await editTool.execute(
+            "e1",
+            {
+              path: "sample.txt",
+              edits: [
+                {
+                  range: [`2#${computeLineHash(2, "two")}`, `2#${computeLineHash(2, "two")}`],
+                  lines: ["TWO"],
+                },
+              ],
+            },
+            undefined,
+            undefined,
+            { cwd, hasUI: true, ui: { notify() {} } } as any,
+          );
+        } catch (error: unknown) {
+          errorMessage = error instanceof Error ? error.message : String(error);
+        }
+
+        expect(errorMessage).toContain("1 stale anchor");
+        expect(errorMessage).not.toContain("2 stale anchors");
+        expect(errorMessage).toContain(
+          `>>> 2#${computeLineHash(2, "TWO!")}:TWO!`,
+        );
+      },
+    );
+  });
 });

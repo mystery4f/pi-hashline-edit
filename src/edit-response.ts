@@ -130,12 +130,9 @@ export function buildChangedResponse(input: SuccessResponseInput): ToolResult {
   const removedLines = countDiffLines(diffResult.diff, "-");
   const warningsBlock = warningsBlockOf(warnings);
 
-  const resultLines = result.length === 0 ? [] : result.endsWith("\n") ? result.slice(0, -1).split("\n") : result.split("\n");
-  const text = resultLines.length === 0
-    ? "File is empty. Use edit with prepend or append and omit pos to insert content."
-    : [diffResult.diff, warningsBlock.trimStart()]
-        .filter((section) => section.length > 0)
-        .join("\n\n");
+  const text = [diffResult.diff, warningsBlock.trimStart()]
+    .filter((section) => section.length > 0)
+    .join("\n\n");
 
   const metrics = buildMetrics({
     classification: "applied",

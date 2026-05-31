@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "fs/promises";
 import register from "../../index";
 import { computeLineHash } from "../../src/hashline";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
@@ -137,7 +138,7 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("returns empty-file hint after deleting all content", async () => {
+  it("allows full-file deletion for small files (≤50 lines) and shows diff", async () => {
     await withTempFile("sample.txt", "only\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -161,10 +162,37 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toBe(
-        "File is empty. Use edit with prepend or append and omit pos to insert content.",
-      );
-      expect(text).not.toContain("use read");
+      expect(text).toContain("-1   :only");
+      expect(await readFile(`${cwd}/sample.txt`, "utf-8")).toBe("");
+    });
+  });
+
+  it("rejects full-file deletion for large files (>50 lines)", async () => {
+    const lines = Array.from({ length: 55 }, (_, i) => `line ${i + 1}`).join("\n");
+    await withTempFile("big.txt", `${lines}\n`, async ({ cwd }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      register(pi);
+      const editTool = getTool("edit");
+      const firstRef = `1#${computeLineHash(1, "line 1")}`;
+      const lastRef = `55#${computeLineHash(55, "line 55")}`;
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "big.txt",
+            edits: [
+              {
+                range: [firstRef, lastRef],
+                lines: [],
+              },
+            ],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/\[E_WOULD_EMPTY\].*edit tool does not allow full-file deletion for files with more than 50 lines/);
     });
   });
 

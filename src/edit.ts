@@ -471,8 +471,15 @@ const editToolDefinition: EditToolDefinition = {
       const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
       const result = anchorResult.content;
       const warnings = anchorResult.warnings;
+      const originalLineCount = originalNormalized.length === 0
+        ? 0
+        : originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
+      if (result.length === 0 && originalLineCount > 50) {
+        throw new Error(
+          "[E_WOULD_EMPTY] This edit would delete the entire file. The edit tool does not allow full-file deletion for files with more than 50 lines. If you truly intend to clear the file, use the write tool to overwrite it with an empty string.",
+        );
+      }
       const noopEdits = anchorResult.noopEdits;
-
       const editsAttempted = toolEdits.length;
 
       if (originalNormalized === result) {

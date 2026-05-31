@@ -7,6 +7,8 @@
 - Removed `--- Anchors ---` blocks; anchors are extracted directly from diff lines.
 - Removed `computeAffectedLineRange`, `formatHashlineRegion`, anchor-block Markdown formatting.
 - Removed `changed_lines` from metrics (no longer computed).
+- **Stale anchor de-duplication.** Single-line range `[4#6B, 4#6B]` now reports "1 stale anchor" instead of "2 stale anchors: 4#6B, 4#6B".
+- **Full-file deletion guardrail.** `[E_WOULD_EMPTY]` rejects edits that would delete the entire file, but only for files with more than 50 lines. Small files show the diff normally.
 
 ## 0.7.1
 

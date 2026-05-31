@@ -177,8 +177,17 @@ function formatMismatchError(
     retryLineSet.add(m.line);
   }
 
+  // De-duplicate: same line + same expected hash = same anchor
+  const seenKeys = new Set<string>();
+  const uniqueMismatches = mismatches.filter((m) => {
+    const key = `${m.line}:${m.expected}`;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+
   const displayLines = new Set<number>();
-  for (const m of mismatches) {
+  for (const m of uniqueMismatches) {
     for (
       let i = Math.max(1, m.line - 2);
       i <= Math.min(fileLines.length, m.line + 2);
@@ -194,9 +203,9 @@ function formatMismatchError(
   const sorted = [...displayLines].sort((a, b) => a - b);
   const maxDisplayLine = sorted[sorted.length - 1] ?? 1;
   const lineNumberWidth = String(maxDisplayLine).length;
-  const anchorList = mismatches.map((m) => `${m.line}#${m.expected}`).join(", ");
+  const anchorList = uniqueMismatches.map((m) => `${m.line}#${m.expected}`).join(", ");
   const out: string[] = [
-    `[E_STALE_ANCHOR] ${mismatches.length} stale anchor${mismatches.length > 1 ? "s" : ""}: ${anchorList}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.`,
+    `[E_STALE_ANCHOR] ${uniqueMismatches.length} stale anchor${uniqueMismatches.length > 1 ? "s" : ""}: ${anchorList}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.`,
     "",
   ];
 

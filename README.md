@@ -73,17 +73,30 @@ All edits in a single call validate against the same pre-edit snapshot and apply
 
 ### Chained edits
 
-After a successful edit, the result includes an `--- Updated anchors ---` block with fresh `LINE#HASH` references for the changed region. These can be used directly in the next `edit` call on the same file without a full re-read, provided the next edit targets the same or nearby lines. For distant changes, use `read` first.
+After a successful edit, the response contains a unified diff where context and added lines carry fresh `LINE#HASH` anchors. These can be used directly in the next `edit` call on the same file without a full re-read, provided the next edit targets the same or nearby lines. For distant changes, use `read` first.
 
-### Diff preview
+### Diff output
 
-Each edit result includes a compact `Diff preview:` block showing the changed lines with `+`/`-` markers and their new `LINE#HASH` anchors, making quick follow-up edits possible without a full re-read.
+Each edit result shows a unified diff with hashline-formatted lines:
+
+```text
+ 8#A4:function hello() {
+-9   :  console.log("world");
++9#B1:  console.log("hashline");
+10#B2:}
+```
+
+- Context lines: ` NN#HH:content` (space prefix)
+- Removed lines: `-NN   :content` (no hash, aligned colon)
+- Added lines: `+NN#HH:content` (hash for new anchors)
+- Multiple hunks are shown when edits are far apart.
 
 ## Design Decisions
 
 - **Stale anchors fail.** A hash mismatch means the file has changed since the last `read`. The error includes a snippet with fresh `LINE#HASH` references for the affected lines for immediate retry.
 - **No fallback relocation.** Mismatched anchors are never silently relocated to a "close enough" line. This trades convenience for correctness.
 - **Strict patch content.** If `lines` contains `LINE#HASH:` display prefixes or diff `+`/`-` markers, the edit is rejected with `[E_INVALID_PATCH]`. The model must send literal file content; the runtime does not silently strip accidental prefixes.
+- **Full-file deletion guardrail.** Edits that would empty a file with more than 50 lines are rejected with `[E_WOULD_EMPTY]`. Small files show the full diff normally; large deletions are almost always mistakes.
 - **Atomic writes.** Files are written via temp-file-then-rename to avoid corruption from interrupted writes. Symlink chains are resolved so the target file is updated without replacing the symlink. Hard-linked files are updated in place to preserve the shared inode. File permissions are preserved across atomic renames.
 - **Per-file mutation queue.** Edits queue by the canonical write target, so concurrent edits through different symlink paths still serialize onto the same underlying file.
 - **Schema-delegated validation.** Field-type and schema validation are the responsibility of pi's AJV layer. The extension's runtime guard only prevents crashes from missing required top-level fields.
