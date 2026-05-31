@@ -1,6 +1,6 @@
 Patch a UTF-8 text file using `LINE#HASH` anchors copied verbatim from `read`.
 
-Submit one `edit` call per file. All operations go in a single `edits` array; anchors must all come from the same pre-edit read.
+Submit one `edit` call per file. All operations go in a single `edits` array; anchors must come from the same fresh source — the most recent `read` or `--- Anchors ---` block of a successful `edit` on this file.
 
 Each edit entry replaces an inclusive anchor range:
 ```json

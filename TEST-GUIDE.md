@@ -86,8 +86,12 @@ Expected: `[E_INVALID_PATCH]`. The model must strip display prefixes before send
 Send two edits in one request whose ranges overlap. For example, one targeting lines 2–5 and another targeting 4–7.
 Expected: rejected with an error about overlapping or conflicting ranges.
 
----
+### 10. Read a directory
 
+Try reading a directory path instead of a file.
+Expected: the error shows the directory listing, so you can pick a file directly without running `ls`.
+
+---
 ## Edge Cases
 
 ### 6. Insert at start of file

@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { readFileSync } from "fs";
-import { access as fsAccess } from "fs/promises";
+import { access as fsAccess, readdir as fsReaddir } from "fs/promises";
 import { constants } from "fs";
 import { normalizeToLF, stripBom } from "./edit-diff";
 import { loadFileKindAndText } from "./file-kind";
@@ -180,7 +180,15 @@ export function registerReadTool(pi: ExtensionAPI): void {
       throwIfAborted(signal);
       const file = await loadFileKindAndText(absolutePath);
       if (file.kind === "directory") {
-        throw new Error(`Path is a directory: ${rawPath}. Use ls to inspect directories.`);
+        const entries = await fsReaddir(absolutePath);
+        const listing = entries
+          .slice(0, 50)
+          .map((name) => `  ${name}`)
+          .join("\n");
+        const cap = entries.length > 50 ? `\n  ... and ${entries.length - 50} more` : "";
+        throw new Error(
+          `Path is a directory: ${rawPath}\n${listing}${cap}\n\nUse ls to explore further or read a specific file.`,
+        );
       }
 
       if (file.kind === "binary") {

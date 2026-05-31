@@ -1,7 +1,13 @@
 # Changelog
 
-## 0.7.0
+## 0.7.1
 
+- Directory reads include the directory listing in the error, saving a follow-up `ls`.
+- Clarify anchors can come from `--- Anchors ---` edit result blocks, not just `read`.
+- Fix install command to scoped package name.
+- Exclude profiling tests from vitest.
+
+## 0.7.0
 ### Breaking
 - **Single edit shape.** One entry type: `{ range: [start, end], lines: [...] }`. No `op`, `after`, `before`, `append`, `prepend`, `replace_text`.
 - **Hex hash alphabet.** `0-9 A-F` replaces `ZPMQVRWSNKTXJBYH`.

@@ -29,7 +29,7 @@ const editEntrySchema = Type.Object(
   {
     range: Type.Tuple([Type.String(), Type.String()], {
       description:
-        'LINE#HASH anchor pair [start, end] specifying the inclusive range to replace. Use the same anchor twice for single-line: ["42#A4", "42#A4"].',
+        'LINE#HASH anchor pair [start, end] copied from a recent `read` or `--- Anchors ---` block. Use the same anchor twice for single-line: ["42#A4", "42#A4"].',
     }),
     lines: Type.Array(Type.String(), {
       description: "New content lines. Use [] to delete.",
