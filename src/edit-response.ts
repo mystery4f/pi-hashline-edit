@@ -1,21 +1,11 @@
 /**
  * Edit response builders.
  *
- * Pulled out of `src/edit.ts` execute() so the noop and changed branches
- * are independently testable and the top-level execute path stays narrative.
- *
- * No behaviour change: outputs are byte-identical to the previous inline
- * implementation. The only additive surface is `details.metrics` (Phase 2 C
- * — observability for hosts; the LLM-visible text is unchanged).
+ * Unified diff output: agent and user see the same content. The diff is
+ * generated from structuredPatch hunks with hashline-formatted lines.
  */
 
 import { generateDiffString } from "./edit-diff";
-import {
-  computeAffectedLineRange,
-  formatHashlineRegion,
-} from "./hashline";
-
-const CHANGED_ANCHOR_TEXT_BUDGET_BYTES = 50 * 1024;
 
 // ─── Public types ───────────────────────────────────────────────────────
 
@@ -24,7 +14,6 @@ export type EditMetrics = {
   edits_noop: number;
   warnings: number;
   classification: "applied" | "noop";
-  changed_lines?: { first: number; last: number };
   added_lines?: number;
   removed_lines?: number;
 };
@@ -51,20 +40,12 @@ export interface SuccessResponseInput {
   originalNormalized: string;
   result: string;
   warnings: string[] | undefined;
-  firstChangedLine: number | undefined;
-  lastChangedLine: number | undefined;
   snapshotId: string;
   editsAttempted: number;
   noopEditsCount: number;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────
-
-function getVisibleLines(text: string): string[] {
-  if (text.length === 0) return [];
-  const lines = text.split("\n");
-  return text.endsWith("\n") ? lines.slice(0, -1) : lines;
-}
 
 function countDiffLines(diff: string, marker: "+" | "-"): number {
   if (!diff) return 0;
@@ -82,8 +63,6 @@ function buildMetrics(args: {
   editsAttempted: number;
   noopEditsCount: number;
   warningsCount: number;
-  firstChangedLine?: number;
-  lastChangedLine?: number;
   addedLines?: number;
   removedLines?: number;
 }): EditMetrics {
@@ -93,16 +72,6 @@ function buildMetrics(args: {
     warnings: args.warningsCount,
     classification: args.classification,
   };
-  if (
-    args.classification === "applied" &&
-    args.firstChangedLine !== undefined &&
-    args.lastChangedLine !== undefined
-  ) {
-    metrics.changed_lines = {
-      first: args.firstChangedLine,
-      last: args.lastChangedLine,
-    };
-  }
   if (args.addedLines !== undefined) metrics.added_lines = args.addedLines;
   if (args.removedLines !== undefined) metrics.removed_lines = args.removedLines;
   return metrics;
@@ -145,7 +114,6 @@ export function buildNoopResponse(input: NoopResponseInput): ToolResult {
     content: [{ type: "text", text }],
     details: {
       diff: "",
-      firstChangedLine: undefined,
       snapshotId,
       classification: "noop" as const,
       metrics,
@@ -154,52 +122,26 @@ export function buildNoopResponse(input: NoopResponseInput): ToolResult {
 }
 
 export function buildChangedResponse(input: SuccessResponseInput): ToolResult {
-  const {
-    result,
-    warnings,
-    firstChangedLine,
-    lastChangedLine,
-    snapshotId,
-    originalNormalized,
-    editsAttempted,
-    noopEditsCount,
-  } = input;
+  const { result, warnings, snapshotId, originalNormalized, editsAttempted, noopEditsCount } =
+    input;
 
   const diffResult = generateDiffString(originalNormalized, result);
   const addedLines = countDiffLines(diffResult.diff, "+");
   const removedLines = countDiffLines(diffResult.diff, "-");
   const warningsBlock = warningsBlockOf(warnings);
 
-  const resultLines = getVisibleLines(result);
-  const anchorRange = computeAffectedLineRange({
-    firstChangedLine,
-    lastChangedLine,
-    resultLineCount: resultLines.length,
-  });
-  const anchorsBlock = anchorRange
-    ? (() => {
-        const region = resultLines.slice(anchorRange.start - 1, anchorRange.end);
-        const formatted = formatHashlineRegion(region, anchorRange.start);
-        const block = `--- Anchors ${anchorRange.start}-${anchorRange.end} ---\n${formatted}`;
-        return Buffer.byteLength(block, "utf8") <= CHANGED_ANCHOR_TEXT_BUDGET_BYTES
-          ? block
-          : "Anchors omitted; use read for subsequent edits.";
-      })()
-    : resultLines.length === 0
-      ? "File is empty. Use edit with prepend or append and omit pos to insert content."
-      : "Anchors omitted; use read for subsequent edits.";
-
-  const text = [anchorsBlock, warningsBlock.trimStart()]
-    .filter((section) => section.length > 0)
-    .join("\n\n");
+  const resultLines = result.length === 0 ? [] : result.endsWith("\n") ? result.slice(0, -1).split("\n") : result.split("\n");
+  const text = resultLines.length === 0
+    ? "File is empty. Use edit with prepend or append and omit pos to insert content."
+    : [diffResult.diff, warningsBlock.trimStart()]
+        .filter((section) => section.length > 0)
+        .join("\n\n");
 
   const metrics = buildMetrics({
     classification: "applied",
     editsAttempted,
     noopEditsCount,
     warningsCount: warnings?.length ?? 0,
-    firstChangedLine,
-    lastChangedLine,
     addedLines,
     removedLines,
   });
@@ -208,7 +150,6 @@ export function buildChangedResponse(input: SuccessResponseInput): ToolResult {
     content: [{ type: "text", text }],
     details: {
       diff: diffResult.diff,
-      firstChangedLine: firstChangedLine ?? diffResult.firstChangedLine,
       snapshotId,
       metrics,
     },

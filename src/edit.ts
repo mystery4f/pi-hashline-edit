@@ -1,4 +1,4 @@
-import { Markdown, Text } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
@@ -48,7 +48,6 @@ export const hashlineEditToolSchema = Type.Object(
 );
 
 
-
 type EditRequestParams = {
   path: string;
   edits: Record<string, unknown>[];
@@ -59,25 +58,14 @@ type EditMetrics = {
   edits_noop: number;
   warnings: number;
   classification: "applied" | "noop";
-  changed_lines?: { first: number; last: number };
   added_lines?: number;
   removed_lines?: number;
 };
 
 type HashlineEditToolDetails = {
   diff: string;
-  firstChangedLine?: number;
-  /**
-   * Post-edit snapshot fingerprint. Surfaced in details only — the LLM no
-   * longer receives or echoes it. Hosts may use this for UI hints (e.g.
-   * "file changed since last view"). See plan W2.
-   */
   snapshotId?: string;
   classification?: "noop";
-  /**
-   * Phase 2 C — opt-in observability surface for hosts. Never echoed in text.
-   * Hosts can use it for adoption/regression dashboards.
-   */
   metrics?: EditMetrics;
 };
 
@@ -93,14 +81,6 @@ const EDIT_PROMPT_SNIPPET = readFileSync(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getVisibleLines(text: string): string[] {
-  if (text.length === 0) {
-    return [];
-  }
-  const lines = text.split("\n");
-  return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
 
 // Safety net for environments where AJV validation is disabled.
@@ -192,10 +172,6 @@ function getRenderedEditTextContent(
   return textContent?.text;
 }
 
-function extractRenderedWarnings(text: string | undefined): string | undefined {
-  return text?.match(/(?:^|\n)Warnings:\n[\s\S]*$/)?.[0]?.trimStart();
-}
-
 function isAppliedChangedResult(
   details: HashlineEditToolDetails | undefined,
 ): boolean {
@@ -220,113 +196,11 @@ function buildAppliedChangedResultText(
     sections.push(formatResultDiff(details.diff, theme));
   }
 
-  const warnings = extractRenderedWarnings(text);
+  const warnings = text?.match(/(?:^|\n\n)Warnings:\n[\s\S]*$/)?.[0]?.trimStart();
   if (warnings) sections.push(warnings);
 
   return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
-
-
-function trimEdgeEmptyLines(lines: string[]): string[] {
-  let start = 0;
-  let end = lines.length;
-
-  while (start < end && lines[start] === "") {
-    start++;
-  }
-  while (end > start && lines[end - 1] === "") {
-    end--;
-  }
-
-  return lines.slice(start, end);
-}
-
-function isRenderedEditSectionBoundary(line: string): boolean {
-  return (
-    line.startsWith("--- Anchors ") ||
-    line === "Warnings:"
-  );
-}
-
-function formatRenderedEditResultMarkdown(text: string): string {
-  const lines = text.split("\n");
-  const sections: string[] = [];
-  let plainLines: string[] = [];
-
-  const flushPlainLines = () => {
-    const trimmed = trimEdgeEmptyLines(plainLines);
-    if (trimmed.length > 0) {
-      sections.push(trimmed.join("\n"));
-    }
-    plainLines = [];
-  };
-
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index]!;
-
-    if (line.startsWith("--- Anchors ")) {
-      flushPlainLines();
-      const title = line.replace(/^---\s*/, "").replace(/\s*---$/, "");
-      index++;
-      const bodyLines: string[] = [];
-      while (index < lines.length && !isRenderedEditSectionBoundary(lines[index]!)) {
-        bodyLines.push(lines[index]!);
-        index++;
-      }
-      sections.push([`#### ${title}`, "```text", ...trimEdgeEmptyLines(bodyLines), "```"].join("\n"));
-      continue;
-    }
-
-    plainLines.push(line);
-    index++;
-  }
-
-  flushPlainLines();
-
-  return sections.join("\n\n");
-}
-
-function createRenderedEditMarkdownTheme(theme: {
-  fg: (token: string, text: string) => string;
-  bold: (text: string) => string;
-  italic?: (text: string) => string;
-  underline?: (text: string) => string;
-  strikethrough?: (text: string) => string;
-}) {
-  return {
-    heading: (text: string) => theme.fg("mdHeading", text),
-    link: (text: string) => theme.fg("mdLink", text),
-    linkUrl: (text: string) => theme.fg("mdLinkUrl", text),
-    code: (text: string) => theme.fg("mdCode", text),
-    codeBlock: (text: string) => theme.fg("mdCodeBlock", text),
-    codeBlockBorder: (text: string) => theme.fg("mdCodeBlockBorder", text),
-    quote: (text: string) => theme.fg("mdQuote", text),
-    quoteBorder: (text: string) => theme.fg("mdQuoteBorder", text),
-    hr: (text: string) => theme.fg("mdHr", text),
-    listBullet: (text: string) => theme.fg("mdListBullet", text),
-    bold: (text: string) => theme.bold(text),
-    italic: (text: string) => theme.italic ? theme.italic(text) : text,
-    underline: (text: string) => theme.underline ? theme.underline(text) : text,
-    strikethrough: (text: string) => theme.strikethrough ? theme.strikethrough(text) : text,
-    highlightCode: (code: string, lang?: string) =>
-      code.split("\n").map((line) => {
-        if (lang === "diff") {
-          if (line.startsWith("+") && !line.startsWith("+++")) {
-            return theme.fg("toolDiffAdded", line);
-          }
-          if (line.startsWith("-") && !line.startsWith("---")) {
-            return theme.fg("toolDiffRemoved", line);
-          }
-          return theme.fg("toolDiffContext", line);
-        }
-
-        return theme.fg("mdCodeBlock", line);
-      }),
-  };
-}
-
-
 
 function formatEditCall(
   args: EditRequestParams | undefined,
@@ -539,11 +413,11 @@ const editToolDefinition: EditToolDefinition = {
       return new Text("", 0, 0);
     }
 
-    const markdown = context.lastComponent instanceof Markdown
+    const text = context.lastComponent instanceof Text
       ? context.lastComponent
-      : new Markdown("", 0, 0, createRenderedEditMarkdownTheme(theme));
-    markdown.setText(formatRenderedEditResultMarkdown(renderedText));
-    return markdown;
+      : new Text("", 0, 0);
+    text.setText(renderedText);
+    return text;
   },
 
   async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -598,8 +472,6 @@ const editToolDefinition: EditToolDefinition = {
       const result = anchorResult.content;
       const warnings = anchorResult.warnings;
       const noopEdits = anchorResult.noopEdits;
-      const firstChangedLine = anchorResult.firstChangedLine;
-      const lastChangedLine = anchorResult.lastChangedLine;
 
       const editsAttempted = toolEdits.length;
 
@@ -627,8 +499,6 @@ const editToolDefinition: EditToolDefinition = {
         originalNormalized,
         result,
         warnings,
-        firstChangedLine,
-        lastChangedLine,
         snapshotId: updatedSnapshotId,
         editsAttempted,
         noopEditsCount: noopEdits?.length ?? 0,

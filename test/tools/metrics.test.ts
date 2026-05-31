@@ -61,9 +61,9 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
         edits_noop: 0,
         warnings: 0,
         classification: "applied",
-        changed_lines: { first: 2, last: 2 },
+        added_lines: 1,
+        removed_lines: 1,
       });
-      expect(getText(result)).not.toContain("metrics");
     });
   });
 

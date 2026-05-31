@@ -9,7 +9,7 @@ describe("generateDiffString", () => {
     expect(diff).toContain(":alpha");
     expect(diff).toContain("+2#");
     expect(diff).toContain(":BETA");
-    expect(diff).toContain("-2    beta");
+    expect(diff).toContain("-2   :beta");
     expect(diff).toContain(" 3#");
     expect(diff).toContain(":gamma");
   });

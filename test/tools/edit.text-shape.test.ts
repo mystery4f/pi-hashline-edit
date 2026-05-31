@@ -8,7 +8,7 @@ function getText(result: { content: Array<{ text?: string }> }): string {
 }
 
 describe("edit tool text shape (token budget)", () => {
-  it("changed mode keeps only anchors in LLM-visible text and line counts in details", async () => {
+  it("returns unified diff in LLM-visible text with line counts in details", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -32,7 +32,9 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toContain("--- Anchors ");
+      expect(text).toContain(" 1#");
+      expect(text).toContain("+2#");
+      expect(text).toContain(":BBB");
       expect(text).not.toContain("Updated sample.ts");
       expect(text).not.toContain("Changes: +1 -1");
       expect(text).not.toContain("Diff preview");
@@ -46,7 +48,7 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("changed mode uses short anchor header without instructional clause", async () => {
+  it("diff format uses aligned colons", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -70,12 +72,13 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toMatch(/^--- Anchors \d+-\d+ ---$/m);
-      expect(text).not.toMatch(/use these for subsequent edits/);
+      expect(text).toMatch(/^ 1#\w{2}:aaa$/m);
+      expect(text).toMatch(/^\+2#\w{2}:BBB$/m);
+      expect(text).toMatch(/^-2   :bbb$/m);
     });
   });
 
-  it("full content details are omitted in default changed mode", async () => {
+  it("full content details are omitted", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -105,7 +108,7 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("noop returns classification noop with anchor header", async () => {
+  it("noop returns classification noop", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -134,7 +137,7 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("changed mode returns the empty-file insertion hint after deleting all content", async () => {
+  it("returns empty-file hint after deleting all content", async () => {
     await withTempFile("sample.txt", "only\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -164,7 +167,8 @@ describe("edit tool text shape (token budget)", () => {
       expect(text).not.toContain("use read");
     });
   });
-  it("changed mode omits oversized anchor payloads even when the changed span fits by line count", async () => {
+
+  it("shows diff even for very long lines", async () => {
     const longLine = "a".repeat(60_000);
     await withTempFile("sample.txt", `before\n${longLine}\nafter\n`, async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
@@ -189,8 +193,10 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toContain("Anchors omitted; use read");
-      expect(text).not.toContain("--- Anchors");
+      // Diff always shown; no byte-budget omission
+      expect(text).toContain("-2   :");
+      expect(text).toContain("+2#");
+      expect(text).not.toContain("Anchors omitted");
     });
   });
 });

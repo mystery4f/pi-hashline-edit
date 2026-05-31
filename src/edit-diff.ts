@@ -223,102 +223,63 @@ export function replaceText(
 
 // ─── Diff generation ────────────────────────────────────────────────────
 
-function formatDiffPreviewLine(
-  prefix: " " | "+" | "-",
-  lineNum: number,
-  lineNumWidth: number,
-  line: string,
-  includeHash: boolean,
-): string {
-  const paddedLineNum = String(lineNum).padStart(lineNumWidth, " ");
-  if (!includeHash) {
-    return `${prefix}${paddedLineNum}    ${line}`;
-  }
-  return `${prefix}${paddedLineNum}#${computeLineHash(lineNum, line)}:${line}`;
-}
-
 export function generateDiffString(
   oldContent: string,
   newContent: string,
   contextLines = 4,
-): { diff: string; firstChangedLine: number | undefined } {
-  const parts = Diff.diffLines(oldContent, newContent);
-  const output: string[] = [];
+): { diff: string } {
+  const patch = Diff.structuredPatch("a", "b", oldContent, newContent, undefined, undefined, {
+    context: contextLines,
+  });
+
+  if (!patch.hunks.length) {
+    return { diff: "" };
+  }
+
   const maxLineNum = Math.max(
     oldContent.split("\n").length,
     newContent.split("\n").length,
   );
   const lineNumWidth = String(maxLineNum).length;
-  let oldLineNum = 1;
-  let newLineNum = 1;
-  let lastWasChange = false;
-  let firstChangedLine: number | undefined;
+  const hashPad = " ".repeat(3); // align with `#HH:`
 
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    const raw = part.value.split("\n");
-    if (raw[raw.length - 1] === "") raw.pop();
+  const output: string[] = [];
 
-    if (part.added || part.removed) {
-      if (firstChangedLine === undefined) firstChangedLine = newLineNum;
-      for (const line of raw) {
-        if (part.added) {
-          output.push(
-            formatDiffPreviewLine("+", newLineNum, lineNumWidth, line, true),
-          );
-          newLineNum++;
-        } else {
-          output.push(
-            formatDiffPreviewLine("-", oldLineNum, lineNumWidth, line, false),
-          );
-          oldLineNum++;
-        }
-      }
-      lastWasChange = true;
-      continue;
+  for (let h = 0; h < patch.hunks.length; h++) {
+    const hunk = patch.hunks[h]!;
+    if (h > 0) {
+      output.push("    ...");
     }
 
-    const nextPartIsChange =
-      i < parts.length - 1 && (parts[i + 1]!.added || parts[i + 1]!.removed);
-    if (lastWasChange || nextPartIsChange) {
-      let linesToShow = raw;
-      let skipStart = 0;
-      let skipEnd = 0;
+    let oldLineNum = hunk.oldStart;
+    let newLineNum = hunk.newStart;
 
-      if (!lastWasChange) {
-        skipStart = Math.max(0, raw.length - contextLines);
-        linesToShow = raw.slice(skipStart);
-      }
-      if (!nextPartIsChange && linesToShow.length > contextLines) {
-        skipEnd = linesToShow.length - contextLines;
-        linesToShow = linesToShow.slice(0, contextLines);
-      }
+    for (const line of hunk.lines) {
+      if (line === "\\ No newline at end of file") continue;
 
-      if (skipStart > 0) {
-        output.push(` ${"".padStart(lineNumWidth, " ")} ...`);
-        oldLineNum += skipStart;
-        newLineNum += skipStart;
-      }
-      for (const line of linesToShow) {
-        output.push(
-          formatDiffPreviewLine(" ", newLineNum, lineNumWidth, line, true),
-        );
+      const prefix = line[0] as " " | "+" | "-";
+      const text = line.slice(1);
+
+      if (prefix === "-") {
+        const padded = String(oldLineNum).padStart(lineNumWidth, " ");
+        output.push(`-${padded}${hashPad}:${text}`);
+        oldLineNum++;
+      } else if (prefix === "+") {
+        const padded = String(newLineNum).padStart(lineNumWidth, " ");
+        const hash = computeLineHash(newLineNum, text);
+        output.push(`+${padded}#${hash}:${text}`);
+        newLineNum++;
+      } else {
+        const padded = String(newLineNum).padStart(lineNumWidth, " ");
+        const hash = computeLineHash(newLineNum, text);
+        output.push(` ${padded}#${hash}:${text}`);
         oldLineNum++;
         newLineNum++;
       }
-      if (skipEnd > 0) {
-        output.push(` ${"".padStart(lineNumWidth, " ")} ...`);
-        oldLineNum += skipEnd;
-        newLineNum += skipEnd;
-      }
-    } else {
-      oldLineNum += raw.length;
-      newLineNum += raw.length;
     }
-    lastWasChange = false;
   }
 
-  return { diff: output.join("\n"), firstChangedLine };
+  return { diff: output.join("\n") };
 }
 
 export interface CompactHashlineDiffPreview {
