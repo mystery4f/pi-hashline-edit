@@ -1,4 +1,3 @@
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Markdown, Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
@@ -21,7 +20,7 @@ import {
 } from "./hashline";
 import { loadFileKindAndText } from "./file-kind";
 import { resolveToCwd } from "./path-utils";
-import { formatHashlineReadPreview } from "./read";
+
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
 import { buildChangedResponse, buildNoopResponse } from "./edit-response";
@@ -48,23 +47,7 @@ export const hashlineEditToolSchema = Type.Object(
   { additionalProperties: false },
 );
 
-type ReturnRange = {
-  start: number;
-  end?: number;
-};
 
-type ReturnedRangePreview = {
-  start: number;
-  end: number;
-  text: string;
-  nextOffset?: number;
-  empty?: true;
-};
-
-type FullContentPreview = {
-  text: string;
-  nextOffset?: number;
-};
 
 type EditRequestParams = {
   path: string;
@@ -75,7 +58,6 @@ type EditMetrics = {
   edits_attempted: number;
   edits_noop: number;
   warnings: number;
-  return_mode: "changed" | "full" | "ranges";
   classification: "applied" | "noop";
   changed_lines?: { first: number; last: number };
   added_lines?: number;
@@ -92,10 +74,6 @@ type HashlineEditToolDetails = {
    */
   snapshotId?: string;
   classification?: "noop";
-  nextOffset?: number;
-  fullContent?: FullContentPreview;
-  returnedRanges?: ReturnedRangePreview[];
-  structureOutline?: string[];
   /**
    * Phase 2 C — opt-in observability surface for hosts. Never echoed in text.
    * Hosts can use it for adoption/regression dashboards.
@@ -224,7 +202,6 @@ function isAppliedChangedResult(
   const metrics = details?.metrics;
   return (
     metrics?.classification === "applied" &&
-    metrics.return_mode === "changed" &&
     metrics.added_lines !== undefined &&
     metrics.removed_lines !== undefined
   );
@@ -267,9 +244,7 @@ function trimEdgeEmptyLines(lines: string[]): string[] {
 function isRenderedEditSectionBoundary(line: string): boolean {
   return (
     line.startsWith("--- Anchors ") ||
-    line === "Warnings:" ||
-    line === "Structure outline:" ||
-    /^--- Range \d+ /.test(line)
+    line === "Warnings:"
   );
 }
 
@@ -351,91 +326,7 @@ function createRenderedEditMarkdownTheme(theme: {
   };
 }
 
-function formatRequestedRangePreviews(
-  text: string,
-  ranges: ReturnRange[],
-): { text: string; returnedRanges: ReturnedRangePreview[] } {
-  const totalLines = getVisibleLines(text).length;
-  const returnedRanges = ranges.map((range) => {
-    const requestedEnd = range.end ?? range.start;
-    const preview = formatHashlineReadPreview(text, {
-      offset: range.start,
-      limit: requestedEnd - range.start + 1,
-    });
-    const hasReturnedLines = /^\s*\d+#/m.test(preview.text);
-    const actualEnd = hasReturnedLines
-      ? preview.nextOffset !== undefined
-        ? preview.nextOffset - 1
-        : Math.min(requestedEnd, totalLines)
-      : requestedEnd;
-    return {
-      start: range.start,
-      end: hasReturnedLines ? Math.max(range.start, actualEnd) : actualEnd,
-      text: preview.text,
-      ...(preview.nextOffset !== undefined ? { nextOffset: preview.nextOffset } : {}),
-      ...(!hasReturnedLines ? { empty: true as const } : {}),
-    };
-  });
 
-  const formatted = returnedRanges
-    .map(
-      (range, index) =>
-        `--- Range ${index + 1} (lines ${range.start}-${range.end}) ---\n${range.text}`,
-    )
-    .join("\n\n");
-
-  return {
-    text: formatted,
-    returnedRanges,
-  };
-}
-
-const STRUCTURE_MARKER_RE = /^(#{1,6}\s+.+|(export\s+)?(async\s+)?function\s+\w+|(export\s+)?class\s+\w+|(export\s+)?interface\s+\w+|(export\s+)?type\s+\w+|(export\s+)?enum\s+\w+|(const|let|var)\s+\w+\s*=\s*(async\s*)?\()/;
-
-function truncateOutlineEntry(text: string, max = 88): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-}
-
-function collectOutlineEntries(previewText: string): string[] {
-  const structural: string[] = [];
-  for (const line of previewText.split("\n")) {
-    const match = line.match(/^\s*(\d+)#[0-9A-F]{2}:(.*)$/);
-    if (!match) continue;
-    const content = match[2]!.trim();
-    if (content.length === 0) continue;
-    if (!STRUCTURE_MARKER_RE.test(content)) continue;
-    structural.push(`${match[1]!}: ${truncateOutlineEntry(content.replace(/\s+/g, " "))}`);
-  }
-  return structural.slice(0, 8);
-}
-
-function buildStructureOutline(
-  sections: Array<{ label?: string; previewText: string }>,
-): { text: string; outline: string[] } {
-  const outlineLines: string[] = [];
-  const detailOutline: string[] = [];
-  const useSectionLabels = sections.length > 1;
-
-  for (const section of sections) {
-    const entries = collectOutlineEntries(section.previewText);
-    if (entries.length === 0) continue;
-    if (useSectionLabels && section.label) {
-      outlineLines.push(`- ${section.label}`);
-    }
-    for (const entry of entries) {
-      outlineLines.push(useSectionLabels ? `  - ${entry}` : `- ${entry}`);
-      detailOutline.push(section.label ? `${section.label}: ${entry}` : entry);
-    }
-  }
-
-  if (outlineLines.length === 0) {
-    return { text: "", outline: [] };
-  }
-  return {
-    text: ["Structure outline:", ...outlineLines].join("\n"),
-    outline: detailOutline,
-  };
-}
 
 function formatEditCall(
   args: EditRequestParams | undefined,
@@ -711,24 +602,16 @@ const editToolDefinition: EditToolDefinition = {
       const lastChangedLine = anchorResult.lastChangedLine;
 
       const editsAttempted = toolEdits.length;
-      const legacyReplace = false;
 
       if (originalNormalized === result) {
         const noopSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
         return buildNoopResponse({
           path,
-          returnMode: "changed",
-          requestedReturnRanges: undefined,
           noopEdits,
           originalNormalized,
           snapshotId: noopSnapshotId,
           editsAttempted,
           warnings,
-          legacyReplace,
-          formatHashlineReadPreview: (text) =>
-            formatHashlineReadPreview(text, { offset: 1 }),
-          formatRequestedRangePreviews,
-          buildStructureOutline,
         });
       }
 
@@ -741,22 +624,14 @@ const editToolDefinition: EditToolDefinition = {
 
       return buildChangedResponse({
         path,
-        returnMode: "changed",
-        requestedReturnRanges: undefined,
         originalNormalized,
         result,
         warnings,
         firstChangedLine,
         lastChangedLine,
         snapshotId: updatedSnapshotId,
-        compatibilityDetails: undefined,
         editsAttempted,
         noopEditsCount: noopEdits?.length ?? 0,
-        legacyReplace,
-        formatHashlineReadPreview: (text: string) =>
-          formatHashlineReadPreview(text, { offset: 1 }),
-        formatRequestedRangePreviews,
-        buildStructureOutline,
       });
     });
   },

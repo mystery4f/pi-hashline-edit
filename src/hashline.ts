@@ -558,11 +558,6 @@ function resolveEditToSpan(
     case "replace": {
       const startLine = edit.pos.line;
       const endLine = edit.end?.line ?? edit.pos.line;
-      if (endLine < startLine) {
-        throw new Error(
-          `[E_BAD_RANGE] Edit ${index}: range end (line ${endLine}) is before start (line ${startLine}). Ensure the range tuple is [start, end] with start ≤ end.`,
-        );
-      }
       const originalLines = fileLines.slice(startLine - 1, endLine);
       if (
         originalLines.length === edit.lines.length &&
@@ -802,7 +797,7 @@ export function applyHashlineEdits(
         if (edit.end) {
           if (edit.pos.line > edit.end.line) {
             throw new Error(
-              `[E_BAD_OP] Range start line ${edit.pos.line} must be <= end line ${edit.end.line}`,
+              `[E_BAD_RANGE] Range start line ${edit.pos.line} must be <= end line ${edit.end.line}`,
             );
           }
           const startOk = validate(edit.pos);
@@ -912,7 +907,7 @@ export function applyHashlineEdits(
     result = result.slice(0, span.start) + replacement + result.slice(span.end);
   }
 
-  const changedRange = computeLegacyEditLineRange(content, result);
+  const changedRange = computeChangedLineRange(content, result);
   return {
     content: result,
     firstChangedLine: changedRange?.firstChangedLine,
@@ -995,7 +990,7 @@ export function formatHashlineRegion(
  * Uses character-level diff to locate the changed span, then maps to line
  * numbers in the result document so downstream anchor chaining works.
  */
-export function computeLegacyEditLineRange(
+function computeChangedLineRange(
   original: string,
   result: string,
 ): { firstChangedLine: number; lastChangedLine: number } | null {

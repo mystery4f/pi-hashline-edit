@@ -10,12 +10,15 @@ Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 ## Differences from upstream
 
-This is a fork of the original [pi-hashline-edit](https://github.com/earendil-works/pi-hashline-edit). The core protocol (hash-anchored reads, stale-anchor rejection, atomic writes) is unchanged. Our changes focus on reducing model confusion:
+This is a fork of the original [pi-hashline-edit](https://github.com/earendil-works/pi-hashline-edit). The core protocol (hash-anchored reads, stale-anchor rejection, atomic writes) is unchanged from upstream. Key differences:
 
-- **Richer prompts.** Multi-line `replace` examples, rules explaining how fields compose (anchors define the span, `lines` defines the replacement), and clearer field descriptions.
-- **Simplified published schema.** Deprecated legacy fields and unused `lines` type variants hidden from the model's view of the tool signature while remaining accepted at runtime.
-- **Symmetric boundary-duplication detection.** Runtime warnings for both directions, not just the trailing-boundary case.
-- **Standard hex hash alphabet.** Replaces the custom `ZPMQVRWSNKTXJBYH` alphabet with 0-9 A-F. Individual hex pairs are more likely to be single tokens (e.g. `A4`, `FF`, `2B`). This is a profiling experiment — if you encounter edit errors that seem tied to hex anchors confusing the model, please open an issue.
+- **Single edit shape.** One entry type: `{ range: [start, end], lines: [...] }`. No `op` field, no `append`/`prepend`/`replace_text` ops, no `after`/`before`. The tuple enforces explicit endpoint anchors, eliminating the common "forgot `end`" failure mode.
+- **Standard hex hash alphabet.** `0-9 A-F` instead of `ZPMQVRWSNKTXJBYH`. Hex pairs are more likely to be single tokens.
+- **Symmetric boundary-duplication detection.** Runtime warnings catch duplicated boundary lines on both sides of a replacement, not just trailing.
+- **`read` raw mode.** `raw: true` returns plain text without `LINE#HASH:` anchors, for reads that don't plan to edit.
+- **Inline FNV-1a hashing.** Replaces `xxhashjs` dependency. Always incorporates line index.
+- **Minimal prompt surface.** Prompt text describes what the model needs to use the tool; return-format documentation and error catalogues are omitted.
+- **No legacy compatibility.** The `{ oldText, newText }` substring-replace format is not accepted. The schema is hashline-only.
 
 ## Installation
 
@@ -45,29 +48,26 @@ Text files are returned with a `LINE#HASH:` prefix on every line. Line numbers m
 Optional parameters:
 - `offset` — start reading from this line number (1-indexed).
 - `limit` — maximum number of lines to return.
-- `raw` — when `true`, returns plain text without LINE#HASH anchors. Use for code exploration when no edit is planned. This parameter is experimental — if it causes confusion (e.g. the model sets `raw: true` but then needs anchors), please report it.
+- `raw` — when `true`, returns plain text without LINE#HASH anchors. Saves tokens when you don't plan to edit this file.
 
-Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files return an advisory suggesting `prepend`/`append` instead of a synthetic anchor.
+Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error.
 
 ### `edit` — hash-anchored modifications
 
-Edits use the `LINE#HASH` anchors from `read` output to target lines precisely:
+Each edit entry replaces an inclusive anchor range:
 
 ```json
 {
   "path": "src/main.ts",
   "edits": [
-    { "op": "replace", "pos": "11#KT", "lines": ["  console.log('hashline');"] }
+    { "range": ["11#3F", "11#3F"], "lines": ["  console.log('hashline');"] },
+    { "range": ["42#B2", "45#C7"], "lines": ["function foo() {", "  return 42;", "}"] }
   ]
 }
 ```
 
-| Op | Purpose | Fields |
-|---|---|---|
-| `replace` | Replace one line (`pos`) or an inclusive range (`pos` + `end`). | `pos` required, `end` optional, `lines` |
-| `append` | Insert lines after `pos`. Omit `pos` to append at EOF. | `pos` optional, `lines` |
-| `prepend` | Insert lines before `pos`. Omit `pos` to prepend at BOF. | `pos` optional, `lines` |
-| `replace_text` | Replace an exact unique substring anywhere in the file. Fails if the text is not found or matches more than once. | `oldText`, `newText` |
+- `range` — `[start, end]` pair of LINE#HASH anchors. Use the same anchor twice for single-line.
+- `lines` — new content replacing the range (string array). Use `[]` to delete.
 
 All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so line numbers stay consistent across operations.
 
@@ -84,17 +84,15 @@ Each edit result includes a compact `Diff preview:` block showing the changed li
 - **Stale anchors fail.** A hash mismatch means the file has changed since the last `read`. The error includes a snippet with fresh `LINE#HASH` references for the affected lines for immediate retry.
 - **No fallback relocation.** Mismatched anchors are never silently relocated to a "close enough" line. This trades convenience for correctness.
 - **Strict patch content.** If `lines` contains `LINE#HASH:` display prefixes or diff `+`/`-` markers, the edit is rejected with `[E_INVALID_PATCH]`. The model must send literal file content; the runtime does not silently strip accidental prefixes.
-- **Hidden legacy compatibility.** When a caller sends a top-level `oldText`/`newText` payload (the built-in edit format), the tool attempts an exact unique match. Usage is surfaced to the interactive UI so the operator can see that the model isn't using hashline mode.
 - **Atomic writes.** Files are written via temp-file-then-rename to avoid corruption from interrupted writes. Symlink chains are resolved so the target file is updated without replacing the symlink. Hard-linked files are updated in place to preserve the shared inode. File permissions are preserved across atomic renames.
 - **Per-file mutation queue.** Edits queue by the canonical write target, so concurrent edits through different symlink paths still serialize onto the same underlying file.
+- **Schema-delegated validation.** Field-type and schema validation are the responsibility of pi's AJV layer. The extension's runtime guard only prevents crashes from missing required top-level fields.
 
 ## Hashing
 
-Hashes are computed with [xxhashjs](https://github.com/pierrec/js-xxhash) (xxHash32), then mapped to a 2-character string from a custom 16-character alphabet.
+Hashes are computed with inline FNV-1a (32-bit, mask-reduced to 8 bits), then mapped to a 2-character hex string from `0-9 A-F`.
 
-The alphabet (`ZPMQVRWSNKTXJBYH`) excludes hex digits, common vowels, and visually ambiguous letters (D/G/I/L/O), so a reference like `5#MQ` can never be confused with code content, hex literals, or English words.
-
-Lines that contain no alphanumeric characters (e.g. a lone `}`) use their line number as the hash seed to reduce collisions on structurally identical markers.
+The line index is always incorporated into the hash, so identical content on different lines produces different hashes.
 
 ## Development
 
