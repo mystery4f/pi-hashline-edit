@@ -815,34 +815,19 @@ export function applyHashlineEdits(
         const startLine = edit.pos.line;
         const endLine = edit.end?.line ?? edit.pos.line;
 
-        // Variant B: last line of replacement matches next surviving line
-        const nextLine = lineIndex.fileLines[endLine];
-        const replacementLastLine = edit.lines.at(-1)?.trim();
-        if (
-          nextLine !== undefined &&
-          replacementLastLine &&
-          /[\p{L}\p{N}]/u.test(replacementLastLine) &&
-          replacementLastLine === nextLine.trim()
-        ) {
-          warnings.push(
-            `Potential boundary duplication after ${describeEdit(edit)}: the replacement ends with a line that matches the next surviving line after trim.`,
-          );
-        }
-
-        // Variant A: first line of replacement matches preceding line
-        if (startLine > 1) {
-          const prevLine = lineIndex.fileLines[startLine - 2];
-          const replacementFirstLine = edit.lines[0]?.trim();
-          if (
-            replacementFirstLine &&
-            /[\p{L}\p{N}]/u.test(replacementFirstLine) &&
-            replacementFirstLine === prevLine.trim()
-          ) {
+        // Check both boundaries for duplication
+        const checkBoundary = (candidate: string | undefined, boundary: string | undefined, label: string) => {
+          if (!candidate || !boundary) return;
+          const c = candidate.trim();
+          const b = boundary.trim();
+          if (c && /[\p{L}\p{N}]/u.test(c) && c === b) {
             warnings.push(
-              `Potential boundary duplication before ${describeEdit(edit)}: the replacement starts with a line that matches the preceding line after trim.`,
+              `Potential boundary duplication ${label} ${describeEdit(edit)}: the replacement ${label === "after" ? "ends" : "starts"} with a line that matches the ${label === "after" ? "next surviving" : "preceding"} line after trim.`,
             );
           }
-        }
+        };
+        checkBoundary(edit.lines.at(-1), lineIndex.fileLines[endLine], "after");
+        if (startLine > 1) checkBoundary(edit.lines[0], lineIndex.fileLines[startLine - 2], "before");
         break;
       }
       case "append": {
