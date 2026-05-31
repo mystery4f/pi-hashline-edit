@@ -558,6 +558,11 @@ function resolveEditToSpan(
     case "replace": {
       const startLine = edit.pos.line;
       const endLine = edit.end?.line ?? edit.pos.line;
+      if (endLine < startLine) {
+        throw new Error(
+          `[E_BAD_RANGE] Edit ${index}: range end (line ${endLine}) is before start (line ${startLine}). Ensure the range tuple is [start, end] with start ≤ end.`,
+        );
+      }
       const originalLines = fileLines.slice(startLine - 1, endLine);
       if (
         originalLines.length === edit.lines.length &&

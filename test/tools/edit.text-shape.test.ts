@@ -13,6 +13,7 @@ describe("edit tool text shape (token budget)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -20,8 +21,7 @@ describe("edit tool text shape (token budget)", () => {
           path: "sample.ts",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["BBB"],
             },
           ],
@@ -51,6 +51,7 @@ describe("edit tool text shape (token budget)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -58,8 +59,7 @@ describe("edit tool text shape (token budget)", () => {
           path: "sample.ts",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["BBB"],
             },
           ],
@@ -75,21 +75,20 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("full mode omits Structure outline when no structural markers are found", async () => {
+  it("full content details are omitted in default changed mode", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.txt",
-          returnMode: "full",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["BBB"],
             },
           ],
@@ -101,65 +100,25 @@ describe("edit tool text shape (token budget)", () => {
 
       const text = getText(result);
       expect(text).not.toContain("Structure outline:");
-      expect(text).toContain("details.fullContent");
-      expect(result.details?.structureOutline).toEqual([]);
+      expect(result.details?.fullContent).toBeUndefined();
+      expect(result.details?.structureOutline).toBeUndefined();
     });
   });
 
-  it("full mode includes Structure outline when structural markers are found", async () => {
-    const source = [
-      "// header",
-      "export function alpha() {",
-      "  return 1;",
-      "}",
-      "export class Beta {}",
-      "",
-    ].join("\n");
-    await withTempFile("sample.ts", source, async ({ cwd }) => {
-      const { pi, getTool } = makeFakePiRegistry();
-      register(pi);
-      const editTool = getTool("edit");
-
-      const result = await editTool.execute(
-        "e1",
-        {
-          path: "sample.ts",
-          returnMode: "full",
-          edits: [
-            {
-              op: "replace",
-              pos: `3#${computeLineHash(3, "  return 1;")}`,
-              lines: ["  return 2;"],
-            },
-          ],
-        },
-        undefined,
-        undefined,
-        { cwd } as any,
-      );
-
-      const text = getText(result);
-      expect(text).toContain("Structure outline:");
-      expect(text).toMatch(/function alpha/);
-      expect(text).toMatch(/class Beta/);
-    });
-  });
-
-  it("noop in full mode omits outline when nothing structural shows up", async () => {
+  it("noop returns classification noop with anchor header", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.txt",
-          returnMode: "full",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["bbb"],
             },
           ],
@@ -172,7 +131,6 @@ describe("edit tool text shape (token budget)", () => {
       const text = getText(result);
       expect(text).toContain("Classification: noop");
       expect(text).not.toContain("Structure outline:");
-      expect(text).toContain("details.fullContent");
     });
   });
 
@@ -181,6 +139,7 @@ describe("edit tool text shape (token budget)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const oRef = `1#${computeLineHash(1, "only")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -188,8 +147,7 @@ describe("edit tool text shape (token budget)", () => {
           path: "sample.txt",
           edits: [
             {
-              op: "replace",
-              pos: `1#${computeLineHash(1, "only")}`,
+              range: [oRef, oRef],
               lines: [],
             },
           ],
@@ -212,6 +170,7 @@ describe("edit tool text shape (token budget)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const lRef = `2#${computeLineHash(2, longLine)}`;
 
       const result = await editTool.execute(
         "e1",
@@ -219,8 +178,7 @@ describe("edit tool text shape (token budget)", () => {
           path: "sample.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, longLine)}`,
+              range: [lRef, lRef],
               lines: [`b${longLine.slice(1)}`],
             },
           ],

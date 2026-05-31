@@ -382,8 +382,7 @@ describe("file kind guards in tools", () => {
             "e1",
             {
               path: "sample.bin",
-              oldText: "a",
-              newText: "A",
+              edits: [{ range: ["1#AB", "1#AB"], lines: ["A"] }],
             },
             undefined,
             undefined,

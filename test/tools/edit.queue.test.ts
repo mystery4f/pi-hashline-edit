@@ -55,8 +55,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `1#${computeLineHash(1, "alpha")}`,
+              range: [`1#${computeLineHash(1, "alpha")}`, `1#${computeLineHash(1, "alpha")}`],
               lines: ["ALPHA"],
             },
           ],
@@ -71,8 +70,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [`2#${computeLineHash(2, "beta")}`, `2#${computeLineHash(2, "beta")}`],
               lines: ["BETA"],
             },
           ],
@@ -93,6 +91,9 @@ describe("edit tool file mutation queue", () => {
   });
 
   it("canonicalizes the queue key when a symlink points at the same file", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     await withTempFile("race.ts", "alpha\nbeta\ngamma\n", async ({ cwd, path }) => {
       await symlink("race.ts", `${cwd}/linked-race.ts`);
 
@@ -105,8 +106,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `1#${computeLineHash(1, "alpha")}`,
+              range: [`1#${computeLineHash(1, "alpha")}`, `1#${computeLineHash(1, "alpha")}`],
               lines: ["ALPHA"],
             },
           ],
@@ -121,8 +121,7 @@ describe("edit tool file mutation queue", () => {
           path: "linked-race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [`2#${computeLineHash(2, "beta")}`, `2#${computeLineHash(2, "beta")}`],
               lines: ["BETA"],
             },
           ],
@@ -143,6 +142,9 @@ describe("edit tool file mutation queue", () => {
   });
 
   it("canonicalizes the queue key when a parent directory is a symlink", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     await withTempFile("race.ts", "alpha\nbeta\ngamma\n", async ({ cwd, path }) => {
       await symlink(".", `${cwd}/aliasdir`);
 
@@ -155,8 +157,7 @@ describe("edit tool file mutation queue", () => {
           path: "race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `1#${computeLineHash(1, "alpha")}`,
+              range: [`1#${computeLineHash(1, "alpha")}`, `1#${computeLineHash(1, "alpha")}`],
               lines: ["ALPHA"],
             },
           ],
@@ -171,8 +172,7 @@ describe("edit tool file mutation queue", () => {
           path: "aliasdir/race.ts",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [`2#${computeLineHash(2, "beta")}`, `2#${computeLineHash(2, "beta")}`],
               lines: ["BETA"],
             },
           ],

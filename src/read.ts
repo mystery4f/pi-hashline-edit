@@ -66,7 +66,7 @@ function getPreviewLines(text: string): string[] {
 
 export function formatHashlineReadPreview(
   text: string,
-  options: { offset?: number; limit?: number },
+  options: { offset?: number; limit?: number; raw?: boolean },
 ): { text: string; truncation?: TruncationResult; nextOffset?: number } {
   const allLines = getPreviewLines(text);
   const totalLines = allLines.length;
@@ -94,12 +94,13 @@ export function formatHashlineReadPreview(
     ? Math.min(startLine - 1 + limit, totalLines)
     : totalLines;
   const selected = allLines.slice(startLine - 1, endIdx);
-  const formatted = formatHashlineRegion(selected, startLine);
+  const formatted = options.raw ? selected.join("\n") : formatHashlineRegion(selected, startLine);
 
   const truncation = truncateHead(formatted);
   if (truncation.firstLineExceedsLimit) {
     return {
-      text: `[Line ${startLine} exceeds ${formatSize(truncation.maxBytes)}. Hashline output requires full lines; cannot compute hashes for a truncated preview.]`,
+      text: `[Line ${startLine} exceeds ${formatSize(truncation.maxBytes)}.${options.raw ? "" : " Hashline output requires full lines; cannot compute hashes for a truncated preview."}]`,
+
       truncation,
     };
   }
@@ -149,6 +150,11 @@ export function registerReadTool(pi: ExtensionAPI): void {
           description: "Maximum number of lines to read",
         }),
       ),
+      raw: Type.Optional(
+        Type.Boolean({
+          description: "Return raw text without LINE#HASH anchors, saving tokens. Don't use if you plan to edit this file.",
+        }),
+      ),
     }),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -178,7 +184,7 @@ export function registerReadTool(pi: ExtensionAPI): void {
       }
 
       if (file.kind === "binary") {
-        throw new Error(`Path is a binary file: ${rawPath} (${file.description}). Hashline read only supports UTF-8 text files and supported images.`);
+        throw new Error(`Path is a binary file: ${rawPath} (${file.description}). Read only supports UTF-8 text files and supported images.`);
       }
 
       if (file.kind === "image") {
@@ -191,6 +197,7 @@ export function registerReadTool(pi: ExtensionAPI): void {
       const preview = formatHashlineReadPreview(normalized, {
         offset: params.offset,
         limit: params.limit,
+        raw: params.raw,
       });
       const snapshot = await getFileSnapshot(absolutePath);
 

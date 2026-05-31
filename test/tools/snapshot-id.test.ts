@@ -29,38 +29,26 @@ describe("snapshotId surface (details-only after W2)", () => {
     });
   });
 
-  it("edit no longer accepts a snapshotId field on the request", async () => {
+  it("edit silently ignores unknown root fields (AJV responsibility)", async () => {
     await withTempFile("sample.txt", "alpha\nbeta\n", async ({ cwd, path }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "beta")}`;
 
-      let errorMessage = "";
-      try {
-        await editTool.execute(
-          "e1",
-          {
-            path: "sample.txt",
-            snapshotId: "v1|fake|0|0",
-            edits: [
-              {
-                op: "replace",
-                pos: `2#${computeLineHash(2, "beta")}`,
-                lines: ["BETA"],
-              },
-            ],
-          },
-          undefined,
-          undefined,
-          { cwd, hasUI: true, ui: { notify() {} } } as any,
-        );
-      } catch (error: unknown) {
-        errorMessage = error instanceof Error ? error.message : String(error);
-      }
+      await editTool.execute(
+        "e1",
+        {
+          path: "sample.txt",
+          snapshotId: "v1|fake|0|0",
+          edits: [{ range: [bRef, bRef], lines: ["BETA"] }],
+        },
+        undefined,
+        undefined,
+        { cwd, hasUI: true, ui: { notify() {} } } as any,
+      );
 
-      expect(errorMessage).toContain("unknown or unsupported fields");
-      expect(errorMessage).toContain("snapshotId");
-      expect(await readFile(path, "utf-8")).toBe("alpha\nbeta\n");
+      expect(await readFile(path, "utf-8")).toBe("alpha\nBETA\n");
     });
   });
 
@@ -72,6 +60,7 @@ describe("snapshotId surface (details-only after W2)", () => {
         const { pi, getTool } = makeFakePiRegistry();
         register(pi);
         const editTool = getTool("edit");
+        const fRef = `4#${computeLineHash(4, "four")}`;
 
         // External, unrelated change: line 2 mutated, line 4 still "four".
         await writeFile(path, "one\nTWO!\nthree\nfour\nfive\n", "utf-8");
@@ -82,8 +71,7 @@ describe("snapshotId surface (details-only after W2)", () => {
             path: "sample.txt",
             edits: [
               {
-                op: "replace",
-                pos: `4#${computeLineHash(4, "four")}`,
+                range: [fRef, fRef],
                 lines: ["FOUR"],
               },
             ],
@@ -106,6 +94,7 @@ describe("snapshotId surface (details-only after W2)", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "beta")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -113,8 +102,7 @@ describe("snapshotId surface (details-only after W2)", () => {
           path: "sample.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [bRef, bRef],
               lines: ["BETA"],
             },
           ],
@@ -150,8 +138,7 @@ describe("snapshotId surface (details-only after W2)", () => {
               path: "sample.txt",
               edits: [
                 {
-                  op: "replace",
-                  pos: `2#${computeLineHash(2, "two")}`,
+                  range: [`2#${computeLineHash(2, "two")}`, `2#${computeLineHash(2, "two")}`],
                   lines: ["TWO"],
                 },
               ],

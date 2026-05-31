@@ -25,7 +25,7 @@ describe("computeEditPreview", () => {
       const preview = await computeEditPreview(
         {
           path: "sample.txt",
-          edits: [{ op: "replace", pos: betaRef, lines: ["BBB"] }],
+          edits: [{ range: [betaRef, betaRef], lines: ["BBB"] }],
         },
         cwd,
       );
@@ -39,26 +39,6 @@ describe("computeEditPreview", () => {
     });
   });
 
-  it("returns a diff for fuzzy legacy replacements before execution", async () => {
-    await withTempFile("sample.txt", "he said “hi”\n", async ({ cwd }) => {
-      vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "he said “hi”\n" });
-
-      const preview = await computeEditPreview(
-        {
-          path: "sample.txt",
-          oldText: 'he said "hi"',
-          newText: "HELLO",
-        },
-        cwd,
-      );
-
-      expect("diff" in preview).toBe(true);
-      if (!("diff" in preview)) {
-        return;
-      }
-      expect(preview.diff).toContain("HELLO");
-    });
-  });
 
   it("still computes a preview diff for read-only files", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
@@ -71,7 +51,7 @@ describe("computeEditPreview", () => {
         const preview = await computeEditPreview(
           {
             path: "sample.txt",
-            edits: [{ op: "replace", pos: betaRef, lines: ["BBB"] }],
+            edits: [{ range: [betaRef, betaRef], lines: ["BBB"] }],
           },
           cwd,
         );
@@ -98,7 +78,7 @@ describe("computeEditPreview", () => {
       const preview = await computeEditPreview(
         {
           path: "sample.txt",
-          edits: [{ op: "replace", pos: betaRef, lines: ["BBB"] }],
+          edits: [{ range: [betaRef, betaRef], lines: ["BBB"] }],
         },
         cwd,
       );
@@ -126,7 +106,7 @@ describe("computeEditPreview", () => {
       const betaRef = `2#${computeLineHash(2, "bbb")}:bbb`;
       const editArgs = {
         path: "sample.txt",
-        edits: [{ op: "replace", pos: betaRef, lines: ["BBB"] }],
+        edits: [{ range: [betaRef, betaRef], lines: ["BBB"] }],
       };
 
       // Import registerEditTool to set up the tool with its render methods

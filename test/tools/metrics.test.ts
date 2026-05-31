@@ -38,6 +38,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "beta")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -45,8 +46,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
           path: "a.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [bRef, bRef],
               lines: ["BETA"],
             },
           ],
@@ -73,6 +73,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "beta")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -80,8 +81,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
           path: "b.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
+              range: [bRef, bRef],
               lines: ["beta"],
             },
           ],
@@ -101,45 +101,21 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
     });
   });
 
-  it("legacy top-level oldText path flags legacy_replace=true", async () => {
-    await withTempFile("c.txt", "one\ntwo\nthree\n", async ({ cwd }) => {
+  it("metrics field never appears in user-visible text", async () => {
+    await withTempFile("e.txt", "alpha\nbeta\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-
-      const result = await editTool.execute(
-        "e1",
-        { path: "c.txt", oldText: "two", newText: "TWO" },
-        undefined,
-        undefined,
-        { cwd, hasUI: true, ui: { notify() {} } } as any,
-      );
-
-      expect(result.details?.metrics).toMatchObject({
-        edits_attempted: 1,
-        return_mode: "changed",
-        classification: "applied",
-        legacy_replace: true,
-      });
-    });
-  });
-
-  it("full-mode edit carries return_mode=full in metrics", async () => {
-    await withTempFile("d.txt", "alpha\nbeta\n", async ({ cwd }) => {
-      const { pi, getTool } = makeFakePiRegistry();
-      register(pi);
-      const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "beta")}`;
 
       const result = await editTool.execute(
         "e1",
         {
-          path: "d.txt",
-          returnMode: "full",
+          path: "e.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "beta")}`,
-              lines: ["BETA"],
+              range: [bRef, bRef],
+              lines: ["beta"],
             },
           ],
         },
@@ -148,39 +124,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
         { cwd, hasUI: true, ui: { notify() {} } } as any,
       );
 
-      expect(result.details?.metrics?.return_mode).toBe("full");
-      expect(result.details?.metrics?.classification).toBe("applied");
-    });
-  });
-
-  it("metrics field never appears in user-visible text for any returnMode", async () => {
-    await withTempFile("e.txt", "alpha\nbeta\n", async ({ cwd }) => {
-      const { pi, getTool } = makeFakePiRegistry();
-      register(pi);
-      const editTool = getTool("edit");
-
-      for (const returnMode of ["changed", "full", "ranges"] as const) {
-        const result = await editTool.execute(
-          "e1",
-          {
-            path: "e.txt",
-            returnMode,
-            ...(returnMode === "ranges" ? { returnRanges: [{ start: 1, end: 2 }] } : {}),
-            edits: [
-              {
-                op: "replace",
-                pos: `2#${computeLineHash(2, "beta")}`,
-                lines: ["beta"],
-              },
-            ],
-          },
-          undefined,
-          undefined,
-          { cwd, hasUI: true, ui: { notify() {} } } as any,
-        );
-
-        expect(getText(result)).not.toMatch(/metrics|edits_attempted|edits_noop/);
-      }
+      expect(getText(result)).not.toMatch(/metrics|edits_attempted|edits_noop/);
     });
   });
 });

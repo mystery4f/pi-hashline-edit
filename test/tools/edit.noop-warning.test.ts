@@ -14,6 +14,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -21,8 +22,7 @@ describe("edit tool noop + warnings", () => {
           path: "sample.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["bbb"],
             },
           ],
@@ -43,6 +43,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
+      const bRef = `2#${computeLineHash(2, "bbb")}`;
 
       const result = await editTool.execute(
         "e1",
@@ -50,8 +51,7 @@ describe("edit tool noop + warnings", () => {
           path: "sample.txt",
           edits: [
             {
-              op: "replace",
-              pos: `2#${computeLineHash(2, "bbb")}`,
+              range: [bRef, bRef],
               lines: ["BBB", "ccc"],
             },
           ],

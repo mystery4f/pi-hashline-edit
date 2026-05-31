@@ -20,7 +20,7 @@ describe("chained edit anchors", () => {
 
       const editResult = await editTool.execute(
         "e1",
-        { path: "sample.ts", edits: [{ op: "replace", pos: betaRef, lines: ["BETA"] }] },
+        { path: "sample.ts", edits: [{ range: [betaRef, betaRef], lines: ["BETA"] }] },
         undefined,
         undefined,
         ctx,
@@ -38,7 +38,7 @@ describe("chained edit anchors", () => {
       // Second edit using the returned anchor (no intermediate read).
       const editResult2 = await editTool.execute(
         "e2",
-        { path: "sample.ts", edits: [{ op: "replace", pos: freshRef, lines: ["BETA-CHAINED"] }] },
+        { path: "sample.ts", edits: [{ range: [freshRef, freshRef], lines: ["BETA-CHAINED"] }] },
         undefined,
         undefined,
         ctx,
@@ -76,7 +76,7 @@ describe("chained edit anchors", () => {
         "e1",
         {
           path: "big.ts",
-          edits: [{ op: "replace", pos: line1Ref, end: line15Ref, lines: newLines }],
+          edits: [{ range: [line1Ref, line15Ref], lines: newLines }],
         },
         undefined,
         undefined,
@@ -106,7 +106,7 @@ describe("chained edit anchors", () => {
 
       const editResult = await editTool.execute(
         "e1",
-        { path: "app.ts", edits: [{ op: "append", pos: existingRef, lines: ["appended"] }] },
+        { path: "app.ts", edits: [{ range: [existingRef, existingRef], lines: ["existing", "appended"] }] },
         undefined,
         undefined,
         ctx,
@@ -123,11 +123,18 @@ describe("chained edit anchors", () => {
       register(pi);
       const ctx = { cwd, ui: { notify() {} } } as any;
 
+      const readTool = getTool("read");
       const editTool = getTool("edit");
+
+      const firstRead = await readTool.execute("r1", { path: "pre.ts" }, undefined, undefined, ctx);
+      const existingRef = firstRead.content[0].text
+        .split("\n")
+        .find((line: string) => line.includes(":existing"))!
+        .split(":")[0]!;
 
       const editResult = await editTool.execute(
         "e1",
-        { path: "pre.ts", edits: [{ op: "prepend", lines: ["prepended"] }] },
+        { path: "pre.ts", edits: [{ range: [existingRef, existingRef], lines: ["prepended", "existing"] }] },
         undefined,
         undefined,
         ctx,
@@ -155,7 +162,7 @@ describe("chained edit anchors", () => {
 
       const editResult = await editTool.execute(
         "e1",
-        { path: "sentinel.ts", edits: [{ op: "append", pos: existingRef, lines: ["appended"] }] },
+        { path: "sentinel.ts", edits: [{ range: [existingRef, existingRef], lines: ["existing", "appended"] }] },
         undefined,
         undefined,
         ctx,
@@ -191,7 +198,7 @@ describe("chained edit anchors", () => {
       const newLines = Array.from({ length: 11 }, (_, i) => `EXPANDED ${i + 1}`);
       const editResult = await editTool.execute(
         "e1",
-        { path: "expand.ts", edits: [{ op: "replace", pos: targetRef, lines: newLines }] },
+        { path: "expand.ts", edits: [{ range: [targetRef, targetRef], lines: newLines }] },
         undefined,
         undefined,
         ctx,
@@ -225,7 +232,7 @@ describe("chained edit anchors", () => {
       // First edit changes beta.
       await editTool.execute(
         "e1",
-        { path: "stale.ts", edits: [{ op: "replace", pos: betaRef, lines: ["BETA"] }] },
+        { path: "stale.ts", edits: [{ range: [betaRef, betaRef], lines: ["BETA"] }] },
         undefined,
         undefined,
         ctx,
@@ -235,7 +242,7 @@ describe("chained edit anchors", () => {
       await expect(
         editTool.execute(
           "e2-stale",
-          { path: "stale.ts", edits: [{ op: "replace", pos: betaRef, lines: ["BETA-AGAIN"] }] },
+          { path: "stale.ts", edits: [{ range: [betaRef, betaRef], lines: ["BETA-AGAIN"] }] },
           undefined,
           undefined,
           ctx,
@@ -245,7 +252,7 @@ describe("chained edit anchors", () => {
       // But alphaRef (unchanged line) should still work.
       const alphaEdit = await editTool.execute(
         "e3",
-        { path: "stale.ts", edits: [{ op: "replace", pos: alphaRef, lines: ["ALPHA"] }] },
+        { path: "stale.ts", edits: [{ range: [alphaRef, alphaRef], lines: ["ALPHA"] }] },
         undefined,
         undefined,
         ctx,

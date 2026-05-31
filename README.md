@@ -34,17 +34,18 @@ pi install /path/to/pi-hashline-edit
 Text files are returned with a `LINE#HASH:` prefix on every line. Line numbers may be left-padded within each returned block so the `#HASH:` columns align:
 
 ```text
- 8#VR:function hello() {
- 9#KT:  console.log("world");
-10#BH:}
+ 8#A4:function hello() {
+ 9#3F:  console.log("world");
+10#B2:}
 ```
 
 - `LINE` — 1-indexed line number.
-- `HASH` — 2-character content hash from the alphabet `ZPMQVRWSNKTXJBYH`.
+- `HASH` — 2-character content hash (hex digits `0-9 A-F`).
 
 Optional parameters:
 - `offset` — start reading from this line number (1-indexed).
 - `limit` — maximum number of lines to return.
+- `raw` — when `true`, returns plain text without LINE#HASH anchors. Use for code exploration when no edit is planned. This parameter is experimental — if it causes confusion (e.g. the model sets `raw: true` but then needs anchors), please report it.
 
 Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files return an advisory suggesting `prepend`/`append` instead of a synthetic anchor.
 

@@ -13,14 +13,9 @@ import {
   restoreLineEndings,
   stripBom,
 } from "./edit-diff";
-import {
-  applyExactUniqueLegacyReplace,
-  extractLegacyTopLevelReplace,
-} from "./edit-compat";
 import { resolveMutationTargetPath, writeFileAtomically } from "./fs-write";
 import {
   applyHashlineEdits,
-  computeLegacyEditLineRange,
   resolveEditAnchors,
   type HashlineToolEdit,
 } from "./hashline";
@@ -29,59 +24,26 @@ import { resolveToCwd } from "./path-utils";
 import { formatHashlineReadPreview } from "./read";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
-import {
-  buildChangedResponse,
-  buildFullResponse,
-  buildNoopResponse,
-  buildRangesResponse,
-  type CompatibilityDetails as ResponseCompatibilityDetails,
-  type ReturnMode,
-} from "./edit-response";
+import { buildChangedResponse, buildNoopResponse } from "./edit-response";
 
-const hashlineEditLinesSchema = Type.Union([
-  Type.Array(Type.String(), { description: "content (preferred format)" }),
-  Type.String(),
-  Type.Null(),
-]);
-
-const returnRangeSchema = Type.Object(
+const editEntrySchema = Type.Object(
   {
-    start: Type.Integer({ minimum: 1, description: "first post-edit line to return" }),
-    end: Type.Optional(Type.Integer({ minimum: 1, description: "last post-edit line to return" })),
-  },
-  { additionalProperties: false },
-);
-
-const hashlineEditItemSchema = Type.Object(
-  {
-    op: StringEnum(["replace", "append", "prepend", "replace_text"] as const, {
-      description: 'edit operation: "replace", "append", "prepend", or "replace_text"',
+    range: Type.Tuple([Type.String(), Type.String()], {
+      description:
+        'LINE#HASH anchor pair [start, end] specifying the inclusive range to replace. Use the same anchor twice for single-line: ["42#A4", "42#A4"].',
     }),
-    pos: Type.Optional(Type.String({ description: "anchor" })),
-    end: Type.Optional(Type.String({ description: "limit position" })),
-    lines: Type.Optional(hashlineEditLinesSchema),
-    oldText: Type.Optional(Type.String({ description: "exact text to replace" })),
-    newText: Type.Optional(Type.String({ description: "replacement text" })),
+    lines: Type.Array(Type.String(), {
+      description: "New content lines. Use [] to delete.",
+    }),
   },
   { additionalProperties: false },
 );
-
 export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
-    returnMode: Type.Optional(
-      StringEnum(["changed", "full", "ranges"] as const, { description: 'response mode: "changed", "full", or "ranges"' }),
-    ),
-    returnRanges: Type.Optional(
-      Type.Array(returnRangeSchema, { description: "post-edit line ranges when returnMode is ranges" }),
-    ),
-    edits: Type.Optional(
-      Type.Array(hashlineEditItemSchema, { description: "edits over $path" }),
-    ),
-    oldText: Type.Optional(Type.String({ description: "Deprecated. Use edits[].oldText with op replace_text." })),
-    newText: Type.Optional(Type.String({ description: "Deprecated. Use edits[].newText with op replace_text." })),
-    old_text: Type.Optional(Type.String({ description: "Deprecated. Use oldText or edits[].oldText." })),
-    new_text: Type.Optional(Type.String({ description: "Deprecated. Use newText or edits[].newText." })),
+    edits: Type.Array(editEntrySchema, {
+      description: "Edits to apply to $path. Each edit replaces the range [start, end] with lines. Use the same anchor twice for single-line; use [] to delete.",
+    }),
   },
   { additionalProperties: false },
 );
@@ -106,20 +68,7 @@ type FullContentPreview = {
 
 type EditRequestParams = {
   path: string;
-  returnMode?: "changed" | "full" | "ranges";
-  returnRanges?: ReturnRange[];
-  edits?: HashlineToolEdit[];
-  oldText?: string;
-  newText?: string;
-  old_text?: string;
-  new_text?: string;
-};
-
-type CompatibilityDetails = {
-  used: true;
-  strategy: "legacy-top-level-replace";
-  matchCount: 1;
-  fuzzyMatch?: true;
+  edits: Record<string, unknown>[];
 };
 
 type EditMetrics = {
@@ -131,13 +80,11 @@ type EditMetrics = {
   changed_lines?: { first: number; last: number };
   added_lines?: number;
   removed_lines?: number;
-  legacy_replace?: true;
 };
 
 type HashlineEditToolDetails = {
   diff: string;
   firstChangedLine?: number;
-  compatibility?: CompatibilityDetails;
   /**
    * Post-edit snapshot fingerprint. Surfaced in details only — the LLM no
    * longer receives or echoes it. Hosts may use this for UI hints (e.g.
@@ -166,29 +113,8 @@ const EDIT_PROMPT_SNIPPET = readFileSync(
   "utf-8",
 ).trim();
 
-const ROOT_KEYS = new Set([
-  "path",
-  "returnMode",
-  "returnRanges",
-  "edits",
-  "oldText",
-  "newText",
-  "old_text",
-  "new_text",
-]);
-const ITEM_KEYS = new Set(["op", "pos", "end", "lines", "oldText", "newText"]);
-const LEGACY_KEYS = ["oldText", "newText", "old_text", "new_text"] as const;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasOwn(request: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(request, key);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function getVisibleLines(text: string): string[] {
@@ -199,185 +125,27 @@ function getVisibleLines(text: string): string[] {
   return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
 
-
-// Intentional overlap with the published TypeBox schema:
-// - pi normally runs AJV validation before execute(), but that can be disabled in
-//   environments without runtime code generation support.
-// - some request rules here are cross-field semantics the top-level object schema does
-//   not express cleanly, such as rejecting mixed camelCase/snake_case legacy keys.
+// Safety net for environments where AJV validation is disabled.
+// Field-type and schema validation are AJV's responsibility;
+// only prevent crashes from missing required top-level fields.
+// Path existence is checked in execute() once CWD is available.
 export function assertEditRequest(request: unknown): asserts request is EditRequestParams {
   if (!isRecord(request)) {
     throw new Error("Edit request must be an object.");
   }
-
-  const unknownRootKeys = Object.keys(request).filter((key) => !ROOT_KEYS.has(key));
-  if (unknownRootKeys.length > 0) {
-    throw new Error(
-      `Edit request contains unknown or unsupported fields: ${unknownRootKeys.join(", ")}.`,
-    );
-  }
-
   if (typeof request.path !== "string" || request.path.length === 0) {
     throw new Error('Edit request requires a non-empty "path" string.');
   }
-
-  if (hasOwn(request, "edits") && !Array.isArray(request.edits)) {
-    throw new Error('Edit request requires an "edits" array when provided.');
+  if (!Array.isArray(request.edits) || request.edits.length === 0) {
+    throw new Error('Edit request requires a non-empty "edits" array.');
   }
+}
 
-  if (hasOwn(request, "returnMode")) {
-    if (
-      request.returnMode !== "changed" &&
-      request.returnMode !== "full" &&
-      request.returnMode !== "ranges"
-    ) {
-      throw new Error('Edit request field "returnMode" must be "changed", "full", or "ranges" when provided.');
-    }
-  }
-
-  if (hasOwn(request, "returnRanges")) {
-    if (!Array.isArray(request.returnRanges) || request.returnRanges.length === 0) {
-      throw new Error('Edit request field "returnRanges" must be a non-empty array when provided.');
-    }
-    for (const [index, range] of request.returnRanges.entries()) {
-      if (!isRecord(range)) {
-        throw new Error(`returnRanges[${index}] must be an object.`);
-      }
-      if (!Number.isInteger(range.start) || (range.start as number) < 1) {
-        throw new Error(`returnRanges[${index}].start must be a positive integer.`);
-      }
-      if (hasOwn(range, "end")) {
-        if (!Number.isInteger(range.end) || (range.end as number) < 1) {
-          throw new Error(`returnRanges[${index}].end must be a positive integer when provided.`);
-        }
-        if ((range.end as number) < (range.start as number)) {
-          throw new Error(`returnRanges[${index}].end must be >= start.`);
-        }
-      }
-    }
-  }
-
-  if (request.returnMode === "ranges") {
-    if (!Array.isArray(request.returnRanges) || request.returnRanges.length === 0) {
-      throw new Error('Edit request with returnMode "ranges" requires a non-empty "returnRanges" array.');
-    }
-  } else if (hasOwn(request, "returnRanges")) {
-    throw new Error('Edit request field "returnRanges" is only supported when returnMode is "ranges".');
-  }
-
-  for (const legacyKey of LEGACY_KEYS) {
-    if (hasOwn(request, legacyKey) && typeof request[legacyKey] !== "string") {
-      throw new Error(`Edit request field "${legacyKey}" must be a string.`);
-    }
-  }
-
-  const hasCamelLegacy = hasOwn(request, "oldText") || hasOwn(request, "newText");
-  const hasSnakeLegacy = hasOwn(request, "old_text") || hasOwn(request, "new_text");
-  if (hasCamelLegacy && hasSnakeLegacy) {
-    throw new Error(
-      'Edit request cannot mix legacy camelCase and snake_case fields. Use either oldText/newText or old_text/new_text.',
-    );
-  }
-
-  const hasAnyLegacyKey = hasCamelLegacy || hasSnakeLegacy;
-  const hasStructuredEdits = Array.isArray(request.edits) && request.edits.length > 0;
-  if (hasAnyLegacyKey && !hasStructuredEdits) {
-    const legacy = extractLegacyTopLevelReplace(request);
-    if (!legacy) {
-      throw new Error(
-        'Legacy top-level replace requires both oldText/newText or old_text/new_text.',
-      );
-    }
-  }
-
-  if (!Array.isArray(request.edits)) {
-    return;
-  }
-
-  for (const [index, edit] of request.edits.entries()) {
-    if (!isRecord(edit)) {
-      throw new Error(`Edit ${index} must be an object.`);
-    }
-
-    const unknownItemKeys = Object.keys(edit).filter((key) => !ITEM_KEYS.has(key));
-    if (unknownItemKeys.length > 0) {
-      throw new Error(
-        `Edit ${index} contains unknown or unsupported fields: ${unknownItemKeys.join(", ")}.`,
-      );
-    }
-
-    if (typeof edit.op !== "string") {
-      throw new Error(`Edit ${index} requires an "op" string.`);
-    }
-    if (
-      edit.op !== "replace" &&
-      edit.op !== "append" &&
-      edit.op !== "prepend" &&
-      edit.op !== "replace_text"
-    ) {
-      throw new Error(
-        `Edit ${index} uses unknown op "${edit.op}". Expected "replace", "append", "prepend", or "replace_text".`,
-      );
-    }
-
-    if (hasOwn(edit, "pos") && typeof edit.pos !== "string") {
-      throw new Error(`Edit ${index} field "pos" must be a string when provided.`);
-    }
-    if (hasOwn(edit, "end") && typeof edit.end !== "string") {
-      throw new Error(`Edit ${index} field "end" must be a string when provided.`);
-    }
-    if (hasOwn(edit, "oldText") && typeof edit.oldText !== "string") {
-      throw new Error(`Edit ${index} field "oldText" must be a string when provided.`);
-    }
-    if (hasOwn(edit, "newText") && typeof edit.newText !== "string") {
-      throw new Error(`Edit ${index} field "newText" must be a string when provided.`);
-    }
-    if (
-      hasOwn(edit, "lines") &&
-      edit.lines !== null &&
-      typeof edit.lines !== "string" &&
-      !isStringArray(edit.lines)
-    ) {
-      throw new Error(
-        `Edit ${index} field "lines" must be a string array, string, or null.`,
-      );
-    }
-
-    if (edit.op === "replace_text") {
-      if (typeof edit.oldText !== "string" || typeof edit.newText !== "string") {
-        throw new Error(
-          `Edit ${index} with op "replace_text" requires string "oldText" and "newText" fields.`,
-        );
-      }
-      if (hasOwn(edit, "pos") || hasOwn(edit, "end") || hasOwn(edit, "lines")) {
-        throw new Error(
-          `Edit ${index} with op "replace_text" only supports "oldText" and "newText".`,
-        );
-      }
-      continue;
-    }
-
-    if (!hasOwn(edit, "lines")) {
-      throw new Error(`Edit ${index} requires a "lines" field.`);
-    }
-
-    if (hasOwn(edit, "oldText") || hasOwn(edit, "newText")) {
-      throw new Error(
-        `Edit ${index} with op "${edit.op}" does not support "oldText" or "newText".`,
-      );
-    }
-
-    if (edit.op === "replace" && typeof edit.pos !== "string") {
-      throw new Error(`Edit ${index} with op "replace" requires a "pos" anchor string.`);
-    }
-
-    if ((edit.op === "append" || edit.op === "prepend") && hasOwn(edit, "end")) {
-      throw new Error(
-        `Edit ${index} with op "${edit.op}" does not support "end". Use "pos" or omit it for file boundary insertion.`,
-      );
-    }
-  }
-
+export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineToolEdit[] {
+  return edits.map((edit) => {
+    const [pos, end] = (edit.range as [string, string]) || ["", ""];
+    return { op: "replace", pos, end, lines: (edit.lines as string[]) || [] };
+  });
 }
 
 type EditPreview = { diff: string } | { error: string };
@@ -392,30 +160,11 @@ function getRenderablePreviewInput(args: unknown): EditRequestParams | null {
     return null;
   }
 
-  const request: EditRequestParams = { path: args.path };
-  if (Array.isArray(args.edits)) {
-    request.edits = args.edits as HashlineToolEdit[];
-  }
-  if (typeof args.oldText === "string") {
-    request.oldText = args.oldText;
-  }
-  if (typeof args.newText === "string") {
-    request.newText = args.newText;
-  }
-  if (typeof args.old_text === "string") {
-    request.old_text = args.old_text;
-  }
-  if (typeof args.new_text === "string") {
-    request.new_text = args.new_text;
-  }
-
-  const hasAnyEditPayload =
-    request.edits !== undefined ||
-    request.oldText !== undefined ||
-    request.newText !== undefined ||
-    request.old_text !== undefined ||
-    request.new_text !== undefined;
-  return hasAnyEditPayload ? request : null;
+  const request: EditRequestParams = {
+    path: args.path,
+    edits: Array.isArray(args.edits) ? args.edits : [],
+  };
+  return request.edits.length > 0 ? request : null;
 }
 
 function colorDiffLines(
@@ -732,12 +481,7 @@ export async function computeEditPreview(
   const params = request as EditRequestParams;
   const path = params.path;
   const absolutePath = resolveToCwd(path, cwd);
-  const toolEdits = Array.isArray(params.edits) ? params.edits : [];
-  const legacy = extractLegacyTopLevelReplace(params as Record<string, unknown>);
-
-  if (toolEdits.length === 0 && !legacy) {
-    return { error: "No edits provided." };
-  }
+  const toolEdits = normalizeEditItems(params.edits);
 
   try {
     await fsAccess(absolutePath, constants.R_OK);
@@ -769,18 +513,8 @@ export async function computeEditPreview(
     }
 
     const originalNormalized = normalizeToLF(stripBom(file.text).text);
-
-    let result: string;
-    if (toolEdits.length > 0) {
-      const resolved = resolveEditAnchors(toolEdits);
-      result = applyHashlineEdits(originalNormalized, resolved).content;
-    } else {
-      result = applyExactUniqueLegacyReplace(
-        originalNormalized,
-        normalizeToLF(legacy!.oldText),
-        normalizeToLF(legacy!.newText),
-      ).content;
-    }
+    const resolved = resolveEditAnchors(toolEdits);
+    const result = applyHashlineEdits(originalNormalized, resolved).content;
 
     if (originalNormalized === result) {
       return {
@@ -924,25 +658,11 @@ const editToolDefinition: EditToolDefinition = {
   async execute(_toolCallId, params, signal, _onUpdate, ctx) {
     assertEditRequest(params);
 
-    const normalizedParams = params as EditRequestParams;
-    const path = normalizedParams.path;
+    const path = (params as EditRequestParams).path;
     const absolutePath = resolveToCwd(path, ctx.cwd);
-    const returnMode = normalizedParams.returnMode ?? "changed";
-    const requestedReturnRanges = normalizedParams.returnRanges;
-    const toolEdits = Array.isArray(normalizedParams.edits)
-      ? (normalizedParams.edits as HashlineToolEdit[])
-      : [];
-    const legacy = extractLegacyTopLevelReplace(
-      normalizedParams as Record<string, unknown>,
+    const toolEdits = normalizeEditItems(
+      (params as EditRequestParams).edits,
     );
-
-    if (toolEdits.length === 0 && !legacy) {
-      return {
-        content: [{ type: "text", text: "No edits provided." }],
-        isError: true,
-        details: { diff: "", firstChangedLine: undefined },
-      };
-    }
 
     const mutationTargetPath = await resolveMutationTargetPath(absolutePath);
     return withFileMutationQueue(mutationTargetPath, async () => {
@@ -981,59 +701,24 @@ const editToolDefinition: EditToolDefinition = {
       const originalEnding = detectLineEnding(content);
       const originalNormalized = normalizeToLF(content);
 
-      let result: string;
-      let warnings: string[] | undefined;
-      let noopEdits:
-        | Array<{
-            editIndex: number;
-            loc: string;
-            currentContent: string;
-          }>
-        | undefined;
-      let firstChangedLine: number | undefined;
-      let lastChangedLine: number | undefined;
-      let compatibilityDetails: CompatibilityDetails | undefined;
+      const resolved = resolveEditAnchors(toolEdits);
 
-      if (toolEdits.length > 0) {
-        const resolved = resolveEditAnchors(toolEdits);
-        const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
-        result = anchorResult.content;
-        warnings = anchorResult.warnings;
-        noopEdits = anchorResult.noopEdits;
-        firstChangedLine = anchorResult.firstChangedLine;
-        lastChangedLine = anchorResult.lastChangedLine;
-      } else {
-        const normalizedOldText = normalizeToLF(legacy!.oldText);
-        const normalizedNewText = normalizeToLF(legacy!.newText);
-        const replaced = applyExactUniqueLegacyReplace(
-          originalNormalized,
-          normalizedOldText,
-          normalizedNewText,
-        );
-        result = replaced.content;
-        compatibilityDetails = {
-          used: true,
-          strategy: legacy!.strategy,
-          matchCount: replaced.matchCount,
-          ...(replaced.usedFuzzyMatch ? { fuzzyMatch: true } : {}),
-        };
-        const legacyRange = computeLegacyEditLineRange(
-          originalNormalized,
-          result,
-        );
-        firstChangedLine = legacyRange?.firstChangedLine;
-        lastChangedLine = legacyRange?.lastChangedLine;
-      }
+      const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
+      const result = anchorResult.content;
+      const warnings = anchorResult.warnings;
+      const noopEdits = anchorResult.noopEdits;
+      const firstChangedLine = anchorResult.firstChangedLine;
+      const lastChangedLine = anchorResult.lastChangedLine;
 
-      const editsAttempted = toolEdits.length > 0 ? toolEdits.length : 1;
-      const legacyReplace = toolEdits.length === 0;
+      const editsAttempted = toolEdits.length;
+      const legacyReplace = false;
 
       if (originalNormalized === result) {
         const noopSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
         return buildNoopResponse({
           path,
-          returnMode: returnMode as ReturnMode,
-          requestedReturnRanges,
+          returnMode: "changed",
+          requestedReturnRanges: undefined,
           noopEdits,
           originalNormalized,
           snapshotId: noopSnapshotId,
@@ -1054,19 +739,17 @@ const editToolDefinition: EditToolDefinition = {
       );
       const updatedSnapshotId = (await getFileSnapshot(absolutePath)).snapshotId;
 
-      const successInput = {
+      return buildChangedResponse({
         path,
-        returnMode: returnMode as ReturnMode,
-        requestedReturnRanges,
+        returnMode: "changed",
+        requestedReturnRanges: undefined,
         originalNormalized,
         result,
         warnings,
         firstChangedLine,
         lastChangedLine,
         snapshotId: updatedSnapshotId,
-        compatibilityDetails: compatibilityDetails as
-          | ResponseCompatibilityDetails
-          | undefined,
+        compatibilityDetails: undefined,
         editsAttempted,
         noopEditsCount: noopEdits?.length ?? 0,
         legacyReplace,
@@ -1074,11 +757,7 @@ const editToolDefinition: EditToolDefinition = {
           formatHashlineReadPreview(text, { offset: 1 }),
         formatRequestedRangePreviews,
         buildStructureOutline,
-      };
-
-      if (returnMode === "full") return buildFullResponse(successInput);
-      if (returnMode === "ranges") return buildRangesResponse(successInput);
-      return buildChangedResponse(successInput);
+      });
     });
   },
 };

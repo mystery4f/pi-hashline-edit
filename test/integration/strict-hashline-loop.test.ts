@@ -23,7 +23,7 @@ describe("strict hashline tool loop", () => {
         "e1",
         {
           path: "sample.ts",
-          edits: [{ op: "replace", pos: betaRef, lines: ["BETA"] }],
+          edits: [{ range: [betaRef, betaRef], lines: ["BETA"] }],
         },
         undefined,
         undefined,
@@ -35,13 +35,13 @@ describe("strict hashline tool loop", () => {
           "e2",
           {
             path: "sample.ts",
-            edits: [{ op: "replace", pos: betaRef, lines: ["BETA-AGAIN"] }],
+            edits: [{ range: [betaRef, betaRef], lines: ["BETA-AGAIN"] }],
           },
           undefined,
           undefined,
           ctx,
         ),
-      ).rejects.toThrow(/1 stale anchor\./);
+      ).rejects.toThrow(/stale anchor/);
 
       const secondRead = await readTool.execute("r2", { path: "sample.ts" }, undefined, undefined, ctx);
       const secondText = secondRead.content[0].text as string;
@@ -54,7 +54,7 @@ describe("strict hashline tool loop", () => {
         "e3",
         {
           path: "sample.ts",
-          edits: [{ op: "replace", pos: freshRef, lines: ["BETA-AGAIN"] }],
+          edits: [{ range: [freshRef, freshRef], lines: ["BETA-AGAIN"] }],
         },
         undefined,
         undefined,
