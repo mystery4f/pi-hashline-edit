@@ -24,7 +24,7 @@ This is a fork of the original [pi-hashline-edit](https://github.com/earendil-wo
 
 ```bash
 # From npm
-pi install npm:pi-hashline-edit
+pi install npm:@jerryan/pi-hashline-edit
 
 # From a local checkout
 pi install /path/to/pi-hashline-edit
