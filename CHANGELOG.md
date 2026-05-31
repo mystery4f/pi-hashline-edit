@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2
+
+- **Unified diff output.** Agent and user see identical diff content generated from `structuredPatch` hunks.
+- Format: ` NN#HH:context`, `-NN   :removed`, `+NN#HH:added` with aligned colons.
+- Removed `--- Anchors ---` blocks; anchors are extracted directly from diff lines.
+- Removed `computeAffectedLineRange`, `formatHashlineRegion`, anchor-block Markdown formatting.
+- Removed `changed_lines` from metrics (no longer computed).
+
 ## 0.7.1
 
 - Directory reads include the directory listing in the error, saving a follow-up `ls`.
@@ -8,6 +16,7 @@
 - Exclude profiling tests from vitest.
 
 ## 0.7.0
+
 ### Breaking
 - **Single edit shape.** One entry type: `{ range: [start, end], lines: [...] }`. No `op`, `after`, `before`, `append`, `prepend`, `replace_text`.
 - **Hex hash alphabet.** `0-9 A-F` replaces `ZPMQVRWSNKTXJBYH`.
