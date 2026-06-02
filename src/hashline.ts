@@ -39,6 +39,9 @@ const DICT = Array.from({ length: 256 }, (_, i) => {
   return `${HEX[h]}${HEX[l]}`;
 });
 
+export const ANCHOR_SEP = "#";
+export const CONTENT_SEP = "│";
+
 // FNV-1a 32-bit constants
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
@@ -48,10 +51,10 @@ const FNV_PRIME = 0x01000193;
  * payloads. The runtime no longer strips them — the model must send literal
  * file content. Matching any of these triggers `[E_INVALID_PATCH]`.
  */
-const HASHLINE_PREFIX_RE =
-  /^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[0-9A-F]{2}:/;
-const HASHLINE_PREFIX_PLUS_RE =
-  /^\+\s*(?:\d+\s*#\s*|#\s*)[0-9A-F]{2}:/;
+const HASHLINE_PREFIX_RE = new RegExp(
+  `^\\s*(?:>>>|>>)?\\s*(?:\\d+\\s*${ANCHOR_SEP}\\s*|${ANCHOR_SEP}\\s*)?[0-9A-F]{2}${CONTENT_SEP}`);
+const HASHLINE_PREFIX_PLUS_RE = new RegExp(
+  `^\\+\\s*(?:\\d+\\s*${ANCHOR_SEP}\\s*|${ANCHOR_SEP}\\s*)?[0-9A-F]{2}${CONTENT_SEP}`);
 const DIFF_MINUS_RE = /^-\s*\d+\s{4}/;
 
 export function computeLineHash(idx: number, line: string): string {
@@ -90,16 +93,16 @@ function diagnoseLineRef(ref: string): string {
   const core = ref.replace(/^\s*[>+-]*\s*/, "").trim();
 
   if (!core.length) {
-    return `[E_BAD_REF] Invalid line reference "${ref}". Expected "LINE#HASH" (e.g. "5#MQ").`;
+    return `[E_BAD_REF] Invalid line reference "${ref}". Expected "LINE${ANCHOR_SEP}HASH" (e.g. "5${ANCHOR_SEP}MQ").`;
   }
   if (/^\d+\s*$/.test(core)) {
-    return `[E_BAD_REF] Invalid line reference "${ref}": missing hash, use "LINE#HASH" from read output (e.g. "5#MQ").`;
+    return `[E_BAD_REF] Invalid line reference "${ref}": missing hash, use "LINE${ANCHOR_SEP}HASH" from read output (e.g. "5${ANCHOR_SEP}MQ").`;
   }
-  if (/^\d+\s*:/.test(core)) {
-    return `[E_BAD_REF] Invalid line reference "${ref}": wrong separator, use "LINE#HASH" instead of "LINE:...".`;
+  if (new RegExp(`^\d+\s*[:${CONTENT_SEP}]`).test(core)) {
+    return `[E_BAD_REF] Invalid line reference "${ref}": wrong separator, use "LINE${ANCHOR_SEP}HASH" instead of "LINE:..." or "LINE${CONTENT_SEP}...".`;
   }
 
-  const hashMatch = core.match(/^(\d+)\s*#\s*([^\s:]+)(?:\s*:.*)?$/);
+  const hashMatch = core.match(new RegExp(`^(\d+)\s*${ANCHOR_SEP}\s*([^\s${CONTENT_SEP}]+)(?:\s*${CONTENT_SEP}.*)?$`));
   if (hashMatch) {
     const line = Number.parseInt(hashMatch[1]!, 10);
     const hash = hashMatch[2]!;
@@ -114,16 +117,16 @@ function diagnoseLineRef(ref: string): string {
     }
   }
 
-  const missingHashMatch = core.match(/^(\d+)\s*#\s*$/);
+  const missingHashMatch = core.match(new RegExp(`^(\d+)\s*${ANCHOR_SEP}\s*$`));
   if (missingHashMatch) {
-    return `[E_BAD_REF] Invalid line reference "${ref}": missing hash after "#", use "LINE#HASH" from read output.`;
+    return `[E_BAD_REF] Invalid line reference "${ref}": missing hash after "${ANCHOR_SEP}", use "LINE${ANCHOR_SEP}HASH" from read output.`;
   }
 
-  if (/^0+\s*#/.test(core)) {
+  if (new RegExp(`^0+\s*${ANCHOR_SEP}`).test(core)) {
     return `[E_BAD_REF] Line number must be >= 1, got 0 in "${ref}".`;
   }
 
-  return `[E_BAD_REF] Invalid line reference "${trimmed || ref}". Expected "LINE#HASH" (e.g. "5#MQ").`;
+  return `[E_BAD_REF] Invalid line reference "${trimmed || ref}". Expected "LINE${ANCHOR_SEP}HASH" (e.g. "5${ANCHOR_SEP}MQ").`;
 }
 
 export function parseLineRef(ref: string): { line: number; hash: string } {
@@ -136,7 +139,7 @@ export function parseLineRef(ref: string): { line: number; hash: string } {
 
 function parseAnchorRef(ref: string): Anchor {
   const core = ref.replace(/^\s*[>+-]*\s*/, "").trimEnd();
-  const match = core.match(/^([0-9]+)\s*#\s*([^\s:]+)(?:\s*:(.*))?$/s);
+  const match = core.match(new RegExp(`^([0-9]+)\s*${ANCHOR_SEP}\s*([^\s${CONTENT_SEP}]+)(?:\s*${CONTENT_SEP}(.*))?$`, 's'));
   if (!match) {
     throw new Error(diagnoseLineRef(ref));
   }
@@ -203,9 +206,9 @@ function formatMismatchError(
   const sorted = [...displayLines].sort((a, b) => a - b);
   const maxDisplayLine = sorted[sorted.length - 1] ?? 1;
   const lineNumberWidth = String(maxDisplayLine).length;
-  const anchorList = uniqueMismatches.map((m) => `${m.line}#${m.expected}`).join(", ");
+  const anchorList = uniqueMismatches.map((m) => `${m.line}${ANCHOR_SEP}${m.expected}`).join(", ");
   const out: string[] = [
-    `[E_STALE_ANCHOR] ${uniqueMismatches.length} stale anchor${uniqueMismatches.length > 1 ? "s" : ""}: ${anchorList}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.`,
+    `[E_STALE_ANCHOR] ${uniqueMismatches.length} stale anchor${uniqueMismatches.length > 1 ? "s" : ""}: ${anchorList}. Retry with the >>> LINE${ANCHOR_SEP}HASH lines below; keep both endpoints for range replaces.`,
     "",
   ];
 
@@ -215,11 +218,11 @@ function formatMismatchError(
     prev = num;
     const content = fileLines[num - 1];
     const hash = computeLineHash(num, content);
-    const prefix = `${String(num).padStart(lineNumberWidth, " ")}#${hash}`;
+    const prefix = `${String(num).padStart(lineNumberWidth, " ")}${ANCHOR_SEP}${hash}`;
     out.push(
       retryLineSet.has(num)
-        ? `>>> ${prefix}:${content}`
-        : `    ${prefix}:${content}`,
+        ? `>>> ${prefix}${CONTENT_SEP}${content}`
+        : `    ${prefix}${CONTENT_SEP}${content}`,
     );
   }
 
@@ -242,7 +245,7 @@ function assertNoDisplayPrefixes(lines: string[]): void {
       DIFF_MINUS_RE.test(line)
     ) {
       throw new Error(
-        `[E_INVALID_PATCH] "lines" must contain literal file content, not rendered "LINE#HASH:" or diff "+/-" prefixes. Offending line: ${JSON.stringify(line)}`,
+        `[E_INVALID_PATCH] "lines" must contain literal file content, not rendered "LINE${ANCHOR_SEP}HASH${CONTENT_SEP}" or diff "+/-" prefixes. Offending line: ${JSON.stringify(line)}`,
       );
     }
   }
@@ -435,15 +438,15 @@ function describeEdit(edit: HashlineEdit): string {
   switch (edit.op) {
     case "replace":
       return edit.end
-        ? `replace ${edit.pos.line}#${edit.pos.hash}-${edit.end.line}#${edit.end.hash}`
-        : `replace ${edit.pos.line}#${edit.pos.hash}`;
+        ? `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}-${edit.end.line}${ANCHOR_SEP}${edit.end.hash}`
+        : `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`;
     case "append":
       return edit.pos
-        ? `append after ${edit.pos.line}#${edit.pos.hash}`
+        ? `append after ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`
         : "append at EOF";
     case "prepend":
       return edit.pos
-        ? `prepend before ${edit.pos.line}#${edit.pos.hash}`
+        ? `prepend before ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`
         : "prepend at BOF";
     case "replace_text":
       return `replace_text \"${previewText(edit.oldText)}\"`;
@@ -575,7 +578,7 @@ function resolveEditToSpan(
       ) {
         noopEdits.push({
           editIndex: index,
-          loc: `${edit.pos.line}#${edit.pos.hash}`,
+          loc: `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`,
           currentContent: originalLines.join("\n"),
         });
         return null;
@@ -627,7 +630,7 @@ function resolveEditToSpan(
       if (edit.lines.length === 0) {
         noopEdits.push({
           editIndex: index,
-          loc: edit.pos ? `${edit.pos.line}#${edit.pos.hash}` : "EOF",
+          loc: edit.pos ? `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}` : "EOF",
           currentContent: edit.pos ? fileLines[edit.pos.line - 1] ?? "" : "",
         });
         return null;
@@ -678,7 +681,7 @@ function resolveEditToSpan(
       if (edit.lines.length === 0) {
         noopEdits.push({
           editIndex: index,
-          loc: edit.pos ? `${edit.pos.line}#${edit.pos.hash}` : "BOF",
+          loc: edit.pos ? `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}` : "BOF",
           currentContent: edit.pos ? fileLines[edit.pos.line - 1] ?? "" : "",
         });
         return null;
@@ -988,7 +991,7 @@ export function formatHashlineRegion(
     .map((line, index) => {
       const lineNumber = startLine + index;
       const paddedLineNumber = String(lineNumber).padStart(lineNumberWidth, " ");
-      return `${paddedLineNumber}#${computeLineHash(lineNumber, line)}:${line}`;
+      return `${paddedLineNumber}${ANCHOR_SEP}${computeLineHash(lineNumber, line)}${CONTENT_SEP}${line}`;
     })
     .join("\n");
 }

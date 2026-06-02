@@ -5,6 +5,8 @@ import {
   FUZZY_DOUBLE_QUOTES_RE,
   FUZZY_SINGLE_QUOTES_RE,
   FUZZY_UNICODE_SPACES_RE,
+  ANCHOR_SEP,
+  CONTENT_SEP,
 } from "./hashline";
 
 // ─── Line ending normalization ──────────────────────────────────────────
@@ -241,8 +243,7 @@ export function generateDiffString(
     newContent.split("\n").length,
   );
   const lineNumWidth = String(maxLineNum).length;
-  const hashPad = " ".repeat(3); // align with `#HH:`
-
+  const hashPad = " ".repeat(ANCHOR_SEP.length + 2); // align with `${ANCHOR_SEP}HH${CONTENT_SEP}`
   const output: string[] = [];
 
   for (let h = 0; h < patch.hunks.length; h++) {
@@ -262,17 +263,17 @@ export function generateDiffString(
 
       if (prefix === "-") {
         const padded = String(oldLineNum).padStart(lineNumWidth, " ");
-        output.push(`-${padded}${hashPad}:${text}`);
+        output.push(`-${padded}${hashPad}${CONTENT_SEP}${text}`);
         oldLineNum++;
       } else if (prefix === "+") {
         const padded = String(newLineNum).padStart(lineNumWidth, " ");
         const hash = computeLineHash(newLineNum, text);
-        output.push(`+${padded}#${hash}:${text}`);
+        output.push(`+${padded}${ANCHOR_SEP}${hash}${CONTENT_SEP}${text}`);
         newLineNum++;
       } else {
         const padded = String(newLineNum).padStart(lineNumWidth, " ");
         const hash = computeLineHash(newLineNum, text);
-        output.push(` ${padded}#${hash}:${text}`);
+        output.push(` ${padded}${ANCHOR_SEP}${hash}${CONTENT_SEP}${text}`);
         oldLineNum++;
         newLineNum++;
       }

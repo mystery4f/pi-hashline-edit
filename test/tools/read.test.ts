@@ -27,7 +27,7 @@ describe("formatHashlineReadPreview", () => {
     const result = formatHashlineReadPreview("alpha\nbeta", { offset: 1 });
 
     expect(result.text).toContain("1#");
-    expect(result.text).toContain(":alpha");
+    expect(result.text).toContain("│alpha");
   });
 
   it("pads line numbers to the same width within the returned block", () => {
@@ -35,9 +35,9 @@ describe("formatHashlineReadPreview", () => {
     const result = formatHashlineReadPreview(text, { offset: 8 });
 
     expect(result.text.split("\n").slice(0, 3)).toEqual([
-      ` 8#${computeLineHash(8, "line-8")}:line-8`,
-      ` 9#${computeLineHash(9, "line-9")}:line-9`,
-      `10#${computeLineHash(10, "line-10")}:line-10`,
+      ` 8#${computeLineHash(8, "line-8")}│line-8`,
+      ` 9#${computeLineHash(9, "line-9")}│line-9`,
+      `10#${computeLineHash(10, "line-10")}│line-10`,
     ]);
   });
 
@@ -54,8 +54,8 @@ describe("formatHashlineReadPreview", () => {
 
     expect(result.text).toContain("1#");
     expect(result.text).toContain("2#");
-    expect(result.text).toContain(":alpha");
-    expect(result.text).toContain(":beta");
+    expect(result.text).toContain("│alpha");
+    expect(result.text).toContain("│beta");
     expect(result.text).not.toContain("3#");
     expect(result.text).not.toContain("2 lines total");
   });
@@ -95,9 +95,9 @@ describe("formatHashlineRegion", () => {
     const result = formatHashlineRegion(lines, 5);
 
     expect(result).toBe(
-      `5#${computeLineHash(5, "alpha")}:alpha\n` +
-      `6#${computeLineHash(6, "beta")}:beta\n` +
-      `7#${computeLineHash(7, "gamma")}:gamma`,
+      `5#${computeLineHash(5, "alpha")}│alpha\n` +
+      `6#${computeLineHash(6, "beta")}│beta\n` +
+      `7#${computeLineHash(7, "gamma")}│gamma`,
     );
   });
 
@@ -106,15 +106,15 @@ describe("formatHashlineRegion", () => {
     const result = formatHashlineRegion(lines, 8);
 
     expect(result).toBe(
-      ` 8#${computeLineHash(8, "alpha")}:alpha\n` +
-      ` 9#${computeLineHash(9, "beta")}:beta\n` +
-      `10#${computeLineHash(10, "gamma")}:gamma`,
+      ` 8#${computeLineHash(8, "alpha")}│alpha\n` +
+      ` 9#${computeLineHash(9, "beta")}│beta\n` +
+      `10#${computeLineHash(10, "gamma")}│gamma`,
     );
   });
 
   it("handles a single line", () => {
     const result = formatHashlineRegion(["hello"], 1);
-    expect(result).toBe(`1#${computeLineHash(1, "hello")}:hello`);
+    expect(result).toBe(`1#${computeLineHash(1, "hello")}│hello`);
   });
 
   it("handles empty array", () => {
@@ -167,8 +167,8 @@ describe("read tool protocol", () => {
         { cwd } as any,
       );
 
-      expect(result.content[0].text).toContain(":alpha");
-      expect(result.content[0].text).toContain(":beta");
+      expect(result.content[0].text).toContain("│alpha");
+      expect(result.content[0].text).toContain("│beta");
       expect(result.content[0].text).not.toContain("3#");
     });
   });
@@ -192,8 +192,8 @@ describe("read tool protocol", () => {
         { cwd } as any,
       );
 
-      expect(result.content[0].text).toContain(":alpha");
-      expect(result.content[0].text).toContain(":beta");
+      expect(result.content[0].text).toContain("│alpha");
+      expect(result.content[0].text).toContain("│beta");
       expect(vi.mocked(fileKindMod.classifyFileKind)).not.toHaveBeenCalled();
     });
   });

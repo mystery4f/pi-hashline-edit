@@ -9,7 +9,7 @@ Each edit entry replaces an inclusive anchor range:
 - `range` — `[start, end]` pair of LINE#HASH anchors from the most recent `read` or diff output.
   Use the same anchor twice for single-line: `["42#A4", "42#A4"]`.
 - `lines` — new content replacing the range (string array). Use `[]` to delete.
-  Must be literal file content, not LINE#HASH-prefixed output. Match indentation exactly.
+  Must be literal file content, not LINE#HASH│-prefixed output. Match indentation exactly.
 
 Example:
 ```json

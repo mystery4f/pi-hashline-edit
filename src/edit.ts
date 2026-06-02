@@ -17,6 +17,7 @@ import {
   applyHashlineEdits,
   resolveEditAnchors,
   type HashlineToolEdit,
+  ANCHOR_SEP,
 } from "./hashline";
 import { loadFileKindAndText } from "./file-kind";
 import { resolveToCwd } from "./path-utils";
@@ -29,7 +30,7 @@ const editEntrySchema = Type.Object(
   {
     range: Type.Tuple([Type.String(), Type.String()], {
       description:
-        'LINE#HASH anchor pair [start, end] copied from a recent `read` or `--- Anchors ---` block. Use the same anchor twice for single-line: ["42#A4", "42#A4"].',
+        `LINE${ANCHOR_SEP}HASH anchor pair [start, end] copied from a recent \`read\` or diff output. Use the same anchor twice for single-line: ["42${ANCHOR_SEP}A4", "42${ANCHOR_SEP}A4"].`,
     }),
     lines: Type.Array(Type.String(), {
       description: "New content lines. Use [] to delete.",
@@ -41,7 +42,7 @@ export const hashlineEditToolSchema = Type.Object(
   {
     path: Type.String({ description: "path" }),
     edits: Type.Array(editEntrySchema, {
-      description: "Edits to apply to $path. Each edit replaces the range [start, end] with lines. Use the same anchor twice for single-line; use [] to delete.",
+      description: `Edits to apply to $path. Each edit replaces the range [start, end] with lines. Use the same anchor twice for single-line; use [] to delete.`,
     }),
   },
   { additionalProperties: false },
@@ -70,12 +71,12 @@ type HashlineEditToolDetails = {
 };
 
 const EDIT_DESC = readFileSync(
-  new URL("../prompts/edit.md", import.meta.url),
+  new URL("../tool-descriptions/edit.md", import.meta.url),
   "utf-8",
 ).trim();
 
 const EDIT_PROMPT_SNIPPET = readFileSync(
-  new URL("../prompts/edit-snippet.md", import.meta.url),
+  new URL("../tool-descriptions/edit-snippet.md", import.meta.url),
   "utf-8",
 ).trim();
 

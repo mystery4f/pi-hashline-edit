@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - `index.ts` is the extension entrypoint; it registers the custom `read`/`edit` tools and optional compatibility notifications.
 - `src/` contains the implementation, split by responsibility: `read.ts`, `edit.ts`, `hashline.ts`, `edit-diff.ts`, `file-kind.ts`, `fs-write.ts`, and small runtime/path helpers.
-- `prompts/` holds the Markdown prompt text loaded by the tools at runtime.
+- `tool-descriptions/` holds the Markdown prompt text loaded by the tools at runtime.
 - `test/` mirrors the code layout: `core/` for hashline primitives, `tools/` for tool behavior, `extension/` for registration/notifications, `integration/` for end-to-end flows, and `support/fixtures.ts` for temp-file helpers.
 - `assets/` is documentation media only.
 
