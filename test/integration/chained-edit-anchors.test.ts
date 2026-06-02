@@ -3,8 +3,8 @@ import register from "../../index";
 import { makeFakePiRegistry, withTempFile } from "../support/fixtures";
 
 function extractRef(text: string, content: string): string {
-  const line = text.split("\n").find((l: string) => l.includes(`:${content}`))!;
-  return line.split(":")[0]!.replace(/^[+\- ]/, "").trim();
+  const line = text.split("\n").find((l: string) => l.includes(`│${content}`))!;
+  return line.split("│")[0]!.replace(/^[+\- ]/, "").trim();
 }
 
 describe("chained edit anchors", () => {
@@ -30,7 +30,7 @@ describe("chained edit anchors", () => {
 
       // Diff shows the change with new anchor
       expect(editResult.content[0].text).toContain("+2#");
-      expect(editResult.content[0].text).toContain(":BETA");
+      expect(editResult.content[0].text).toContain("│BETA");
 
       // Extract fresh anchor from diff and chain another edit
       const freshRef = extractRef(editResult.content[0].text, "BETA");
@@ -44,7 +44,7 @@ describe("chained edit anchors", () => {
       );
 
       expect(editResult2.content[0].text).toContain("+2#");
-      expect(editResult2.content[0].text).toContain(":BETA-CHAINED");
+      expect(editResult2.content[0].text).toContain("│BETA-CHAINED");
     });
   });
 
@@ -98,7 +98,7 @@ describe("chained edit anchors", () => {
       );
 
       expect(editResult.content[0].text).toContain("+2#");
-      expect(editResult.content[0].text).toContain(":appended");
+      expect(editResult.content[0].text).toContain("│appended");
     });
   });
 
@@ -123,7 +123,7 @@ describe("chained edit anchors", () => {
       );
 
       expect(editResult.content[0].text).toContain("+1#");
-      expect(editResult.content[0].text).toContain(":prepended");
+      expect(editResult.content[0].text).toContain("│prepended");
     });
   });
 
@@ -150,9 +150,9 @@ describe("chained edit anchors", () => {
       // No empty hashline anchors like "3#09:" should appear
       const anchorLines = editResult.content[0].text
         .split("\n")
-        .filter((line: string) => line.match(/^[+\- ]\s*\d+#\w{2}:.*/));
+        .filter((line: string) => line.match(/^[+\- ]\s*\d+#\w{2}│.*/));
       for (const line of anchorLines) {
-        expect(line).not.toMatch(/^\s*\d+#\w{2}:$/);
+        expect(line).not.toMatch(/^\s*\d+#\w{2}│$/);
       }
     });
   });
@@ -223,7 +223,7 @@ describe("chained edit anchors", () => {
         ctx,
       );
       expect(alphaEdit.content[0].text).toContain("+1#");
-      expect(alphaEdit.content[0].text).toContain(":ALPHA");
+      expect(alphaEdit.content[0].text).toContain("│ALPHA");
     });
   });
 });

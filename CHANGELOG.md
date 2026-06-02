@@ -1,9 +1,16 @@
 # Changelog
 
+## 0.7.3
+
+- **Content separator changed from `:` to `│` (U+2502).** The `│` character almost never appears in source code or documentation, making accidental inclusion in edit payloads far less likely.
+- **Configurable separators.** `ANCHOR_SEP` (`#`) and `CONTENT_SEP` (`│`) are now exported constants from `hashline.ts`, making future changes trivial.
+- **Validator catches `HH│` prefix bugs.** The `assertNoDisplayPrefixes` regex now detects `HH│` without requiring a full `LINE#HASH│` prefix, closing the gap where agents were including only the hash+separator.
+- **Updated all prompts, docs, and tests** to use the new separator.
+
 ## 0.7.2
 
 - **Unified diff output.** Agent and user see identical diff content generated from `structuredPatch` hunks.
-- Format: ` NN#HH:context`, `-NN   :removed`, `+NN#HH:added` with aligned colons.
+- Format: ` NN#HH│context`, `-NN   │removed`, `+NN#HH│added` with aligned separators.
 - Removed `--- Anchors ---` blocks; anchors are extracted directly from diff lines.
 - Removed `computeAffectedLineRange`, `formatHashlineRegion`, anchor-block Markdown formatting.
 - Removed `changed_lines` from metrics (no longer computed).

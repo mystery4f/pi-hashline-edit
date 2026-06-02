@@ -35,13 +35,13 @@ describe("edit tool text shape (token budget)", () => {
       const text = getText(result);
       expect(text).toContain(" 1#");
       expect(text).toContain("+2#");
-      expect(text).toContain(":BBB");
+      expect(text).toContain("│BBB");
       expect(text).not.toContain("Updated sample.ts");
       expect(text).not.toContain("Changes: +1 -1");
       expect(text).not.toContain("Diff preview");
       expect(text).not.toContain("Updated anchors");
       expect(result.details?.diff).toContain("+2");
-      expect(result.details?.diff).toContain(":BBB");
+      expect(result.details?.diff).toContain("│BBB");
       expect(result.details?.metrics).toMatchObject({
         added_lines: 1,
         removed_lines: 1,
@@ -49,7 +49,7 @@ describe("edit tool text shape (token budget)", () => {
     });
   });
 
-  it("diff format uses aligned colons", async () => {
+  it("diff format uses aligned separators", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
@@ -73,9 +73,9 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toMatch(/^ 1#\w{2}:aaa$/m);
-      expect(text).toMatch(/^\+2#\w{2}:BBB$/m);
-      expect(text).toMatch(/^-2   :bbb$/m);
+      expect(text).toMatch(/^ 1#\w{2}│aaa$/m);
+      expect(text).toMatch(/^\+2#\w{2}│BBB$/m);
+      expect(text).toMatch(/^-2   │bbb$/m);
     });
   });
 
@@ -162,7 +162,7 @@ describe("edit tool text shape (token budget)", () => {
       );
 
       const text = getText(result);
-      expect(text).toContain("-1   :only");
+      expect(text).toContain("-1   │only");
       expect(await readFile(`${cwd}/sample.txt`, "utf-8")).toBe("");
     });
   });
@@ -222,7 +222,7 @@ describe("edit tool text shape (token budget)", () => {
 
       const text = getText(result);
       // Diff always shown; no byte-budget omission
-      expect(text).toContain("-2   :");
+      expect(text).toContain("-2   │");
       expect(text).toContain("+2#");
       expect(text).not.toContain("Anchors omitted");
     });

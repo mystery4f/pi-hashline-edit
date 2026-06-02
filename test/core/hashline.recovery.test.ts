@@ -60,7 +60,7 @@ describe("applyHashlineEdits — error handling", () => {
           lines: ["bbb"],
         } as any,
       ]),
-    ).toThrow(/>>> 1#[0-9A-F]{2}:aaa/);
+    ).toThrow(/>>> 1#[0-9A-F]{2}│aaa/);
   });
 
   it("retains still-valid range endpoints in retry snippets", () => {
@@ -82,7 +82,7 @@ describe("applyHashlineEdits — error handling", () => {
         throw error;
       }
       expect(error.message).toContain(
-        `>>> ${validEnd.line}#${validEnd.hash}:eee`,
+        `>>> ${validEnd.line}#${validEnd.hash}│eee`,
       );
     }
   });
@@ -285,7 +285,7 @@ describe("integration: resolveEditAnchors → applyHashlineEdits", () => {
     const tag2 = `2#${computeLineHash(2, "bbb")}`;
     const hash = computeLineHash(2, "BBB");
     const toolEdits: HashlineToolEdit[] = [
-      { op: "replace", pos: tag2, lines: `2#${hash}:BBB` },
+      { op: "replace", pos: tag2, lines: `2#${hash}│BBB` },
     ];
     expect(() => resolveEditAnchors(toolEdits)).toThrow(/^\[E_INVALID_PATCH\]/);
   });
@@ -293,7 +293,7 @@ describe("integration: resolveEditAnchors → applyHashlineEdits", () => {
   it("full pipeline: copied full-line anchor tolerates fuzzy same-line Unicode differences", () => {
     const content = "he said “hi”\nkeep";
     const asciiLine = 'he said "hi"';
-    const staleWithHint = `1#${computeLineHash(1, asciiLine)}:${asciiLine}`;
+    const staleWithHint = `1#${computeLineHash(1, asciiLine)}│${asciiLine}`;
     const toolEdits: HashlineToolEdit[] = [
       { op: "replace", pos: staleWithHint, lines: ["HELLO"] },
     ];
@@ -308,7 +308,7 @@ describe("integration: resolveEditAnchors → applyHashlineEdits", () => {
     const content = `${line}\nkeep`;
     const actualHash = computeLineHash(1, line);
     const arbitraryHash = actualHash === "AB" ? "CD" : "AB";
-    const staleWithHint = `1#${arbitraryHash}:${line}`;
+    const staleWithHint = `1#${arbitraryHash}│${line}`;
     const toolEdits: HashlineToolEdit[] = [
       { op: "replace", pos: staleWithHint, lines: ["HELLO"] },
     ];
@@ -322,10 +322,10 @@ describe("integration: resolveEditAnchors → applyHashlineEdits", () => {
     const start = `1#${computeLineHash(1, "aaa")}`;
     const end = `3#${computeLineHash(3, "ccc")}`;
     const replacement = [
-      ` 1#${computeLineHash(1, "aaa")}:aaa`,
+      ` 1#${computeLineHash(1, "aaa")}│aaa`,
       "-2    bbb",
-      `+2#${computeLineHash(2, "BBB")}:BBB`,
-      ` 3#${computeLineHash(3, "ccc")}:ccc`,
+      `+2#${computeLineHash(2, "BBB")}│BBB`,
+      ` 3#${computeLineHash(3, "ccc")}│ccc`,
     ].join("\n");
     const toolEdits: HashlineToolEdit[] = [
       { op: "replace", pos: start, end, lines: replacement },
