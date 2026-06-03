@@ -2,7 +2,7 @@
 
 # pi-hashline-edit
 
-A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that replaces the built-in `read` and `edit` tools with a hash-anchored line-editing workflow.
+A fork of [pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit) with a trimmed edit schema, unified diff presentation, and extra safety guardrails. A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension.
 
 Every line returned by `read` carries a short content hash. Edits reference these hashes instead of raw text, so the tool can detect stale context and reject outdated changes before they reach the file.
 
@@ -10,7 +10,7 @@ Inspired by [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 ## Differences from upstream
 
-This is a fork of the original [pi-hashline-edit](https://github.com/earendil-works/pi-hashline-edit). The core protocol (hash-anchored reads, stale-anchor rejection, atomic writes) is unchanged from upstream. Key differences:
+This is a fork of the original [pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit). The core protocol (hash-anchored reads, stale-anchor rejection, atomic writes) is unchanged from upstream. Key differences:
 
 - **Single edit shape.** One entry type: `{ range: [start, end], lines: [...] }`. No `op` field, no `append`/`prepend`/`replace_text` ops, no `after`/`before`. The tuple enforces explicit endpoint anchors, eliminating the common "forgot `end`" failure mode.
 - **Standard hex hash alphabet.** `0-9 A-F` instead of `ZPMQVRWSNKTXJBYH`. Hex pairs are more likely to be single tokens.
