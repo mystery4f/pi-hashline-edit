@@ -3,42 +3,34 @@ import { applyHashlineEdits, computeLineHash, hashlineParseText } from "../../sr
 
 describe("computeLineHash", () => {
   it("returns a 2-character hex string", () => {
-    const hash = computeLineHash(1, "hello");
+    const hash = computeLineHash(["hello"], 0);
     expect(hash).toHaveLength(2);
     expect(hash).toMatch(/^[0-9A-F]{2}$/);
   });
 
   it("trims trailing whitespace without collapsing internal spaces", () => {
-    expect(computeLineHash(1, "a\t")).toBe(computeLineHash(1, "a"));
-    expect(computeLineHash(1, "a  b")).not.toBe(computeLineHash(1, "a b"));
+    expect(computeLineHash(["a\t"], 0)).toBe(computeLineHash(["a"], 0));
+    expect(computeLineHash(["a  b"], 0)).not.toBe(computeLineHash(["a b"], 0));
   });
 
   it("strips trailing CR", () => {
-    expect(computeLineHash(1, "hello\r")).toBe(computeLineHash(1, "hello"));
+    expect(computeLineHash(["hello\r"], 0)).toBe(computeLineHash(["hello"], 0));
   });
 
-  it("always incorporates line index", () => {
-    const h1 = computeLineHash(1, "}");
-    const h10 = computeLineHash(10, "}");
-    expect(h1).toMatch(/^[0-9A-F]{2}$/);
-    expect(h10).toMatch(/^[0-9A-F]{2}$/);
-  });
-
-  it("produces different hashes for same content at different indices", () => {
-    // lineIndex is always incorporated — same content, different position = different hash
-    expect(computeLineHash(1, "function foo()")).not.toBe(
-      computeLineHash(99, "function foo()"),
-    );
+  it("produces same hash for same content with same neighbors", () => {
+    const h1 = computeLineHash(["prev", "}", "next"], 1);
+    const h2 = computeLineHash(["prev", "}", "next"], 1);
+    expect(h1).toBe(h2);
   });
 });
 
 describe("strict hashline contract", () => {
   it("preserves internal spaces when hashing", () => {
-    expect(computeLineHash(1, "a b")).not.toBe(computeLineHash(1, "ab"));
+    expect(computeLineHash(["a b"], 0)).not.toBe(computeLineHash(["ab"], 0));
   });
 
   it("trims trailing spaces when hashing", () => {
-    expect(computeLineHash(1, "value  ")).toBe(computeLineHash(1, "value"));
+    expect(computeLineHash(["value  "], 0)).toBe(computeLineHash(["value"], 0));
   });
 
   it("preserves explicit blank trailing line in array input", () => {
@@ -46,10 +38,11 @@ describe("strict hashline contract", () => {
   });
 
   it("rejects stale anchors instead of relocating by hash", () => {
-    const content = ["a", "INSERTED", "b", "target", "c"].join("\n");
+    const fileLines = ["a", "INSERTED", "b", "target", "c"];
+    const content = fileLines.join("\n");
     const stale = {
       op: "replace",
-      pos: { line: 3, hash: computeLineHash(3, "target") },
+      pos: { line: 3, hash: computeLineHash(fileLines, 3) },
       lines: ["updated"],
     };
 

@@ -1,6 +1,19 @@
 # Changelog
 
-## 0.7.4 (unreleased)
+## 0.8.0
+
+### Breaking
+- **Context-based hashing.** Each line's hash now incorporates its immediate neighbors (previous and next) instead of the line index. This means:
+  - Distant edits no longer invalidate anchors (changing line 100 does not affect line 1's hash).
+  - Nearby edits are correctly detected as stale (changing line 5 invalidates anchors on lines 4, 5, and 6).
+  - The model must re-read after edits that touch lines near the target.
+- **Removed textHint fuzzy matching.** Anchors no longer tolerate Unicode normalization mismatches via the copied text hint. If the hash doesn't match, the anchor is stale — period.
+
+### Changed
+- `computeLineHash(fileLines, index)` signature changed from `(lineNum, text)` to accept the full file lines array and a 0-based index.
+- `formatHashlineRegion(fileLines, startLine, endLine)` now requires the full file context for correct hash computation.
+
+## 0.7.4
 
 - **Accept non-UTF-8 text files.** Legacy encodings (CP1251, ANSI, GBK) are no longer rejected as binary. Invalid bytes decode to U+FFFD, matching vanilla pi's built-in read tool. This prevents the model from falling back to raw `sed` edits that bypass hashline's anchor safety.
 - **Warn on non-UTF-8 bytes in read.** If the decoded text contains U+FFFD, a warning is appended: `[Non-UTF-8 bytes shown as U+FFFD; editing rewrites the file as UTF-8.]`. Detected on the full file, not just the visible slice, so out-of-view bad bytes still surface.

@@ -16,7 +16,7 @@ This is a fork of the original [pi-hashline-edit](https://github.com/RimuruW/pi-
 - **Standard hex hash alphabet.** `0-9 A-F` instead of `ZPMQVRWSNKTXJBYH`. Hex pairs are more likely to be single tokens.
 - **Symmetric boundary-duplication detection.** Runtime warnings catch duplicated boundary lines on both sides of a replacement, not just trailing.
 - **`read` raw mode.** `raw: true` returns plain text without `LINE#HASH│` anchors, for reads that don't plan to edit.
-- **Inline FNV-1a hashing.** Replaces `xxhashjs` dependency. Always incorporates line index.
+- **Context-based FNV-1a hashing.** Each line's hash incorporates its immediate neighbors (previous and next). Distant edits don't invalidate anchors; nearby edits do, which is the intended safety behavior.
 - **Minimal prompt surface.** Prompt text describes what the model needs to use the tool; return-format documentation and error catalogues are omitted.
 - **No legacy compatibility.** The `{ oldText, newText }` substring-replace format is not accepted. The schema is hashline-only.
 
@@ -105,7 +105,9 @@ Each edit result shows a unified diff with hashline-formatted lines:
 
 Hashes are computed with inline FNV-1a (32-bit, mask-reduced to 8 bits), then mapped to a 2-character hex string from `0-9 A-F`.
 
-The line index is always incorporated into the hash, so identical content on different lines produces different hashes.
+Each line's hash incorporates the line itself plus its immediate neighbors (previous and next). Missing neighbors at file boundaries contribute an empty string. This means:
+- **Distant edits are stable.** Changing line 100 does not invalidate anchors on line 1.
+- **Nearby edits are detected.** Changing line 5 invalidates anchors on lines 4, 5, and 6, because their context changed. The model must re-read to get fresh anchors for edits in that vicinity.
 
 ## Development
 

@@ -14,7 +14,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(2, "bbb")}`;
+      const bRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`;
 
       const result = await editTool.execute(
         "e1",
@@ -43,7 +43,7 @@ describe("edit tool noop + warnings", () => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(2, "bbb")}`;
+      const bRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`;
 
       const result = await editTool.execute(
         "e1",

@@ -31,13 +31,14 @@ describe("formatHashlineReadPreview", () => {
   });
 
   it("pads line numbers to the same width within the returned block", () => {
-    const text = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`).join("\n");
+    const allLines = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`);
+    const text = allLines.join("\n");
     const result = formatHashlineReadPreview(text, { offset: 8 });
 
     expect(result.text.split("\n").slice(0, 3)).toEqual([
-      ` 8#${computeLineHash(8, "line-8")}│line-8`,
-      ` 9#${computeLineHash(9, "line-9")}│line-9`,
-      `10#${computeLineHash(10, "line-10")}│line-10`,
+      ` 8#${computeLineHash(allLines, 7)}│line-8`,
+      ` 9#${computeLineHash(allLines, 8)}│line-9`,
+      `10#${computeLineHash(allLines, 9)}│line-10`,
     ]);
   });
 
@@ -91,34 +92,34 @@ describe("formatHashlineReadPreview", () => {
 
 describe("formatHashlineRegion", () => {
   it("formats lines with LINE#HASH anchors starting from the given line number", () => {
-    const lines = ["alpha", "beta", "gamma"];
-    const result = formatHashlineRegion(lines, 5);
+    const fileLines = ["", "", "", "", "alpha", "beta", "gamma"];
+    const result = formatHashlineRegion(fileLines, 5, 7);
 
     expect(result).toBe(
-      `5#${computeLineHash(5, "alpha")}│alpha\n` +
-      `6#${computeLineHash(6, "beta")}│beta\n` +
-      `7#${computeLineHash(7, "gamma")}│gamma`,
+      `5#${computeLineHash(fileLines, 4)}│alpha\n` +
+      `6#${computeLineHash(fileLines, 5)}│beta\n` +
+      `7#${computeLineHash(fileLines, 6)}│gamma`,
     );
   });
 
   it("pads region line numbers to the widest line number", () => {
-    const lines = ["alpha", "beta", "gamma"];
-    const result = formatHashlineRegion(lines, 8);
+    const fileLines = ["", "", "", "", "", "", "", "alpha", "beta", "gamma"];
+    const result = formatHashlineRegion(fileLines, 8, 10);
 
     expect(result).toBe(
-      ` 8#${computeLineHash(8, "alpha")}│alpha\n` +
-      ` 9#${computeLineHash(9, "beta")}│beta\n` +
-      `10#${computeLineHash(10, "gamma")}│gamma`,
+      ` 8#${computeLineHash(fileLines, 7)}│alpha\n` +
+      ` 9#${computeLineHash(fileLines, 8)}│beta\n` +
+      `10#${computeLineHash(fileLines, 9)}│gamma`,
     );
   });
 
   it("handles a single line", () => {
-    const result = formatHashlineRegion(["hello"], 1);
-    expect(result).toBe(`1#${computeLineHash(1, "hello")}│hello`);
+    const result = formatHashlineRegion(["hello"], 1, 1);
+    expect(result).toBe(`1#${computeLineHash(["hello"], 0)}│hello`);
   });
 
   it("handles empty array", () => {
-    const result = formatHashlineRegion([], 1);
+    const result = formatHashlineRegion([], 1, 1);
     expect(result).toBe("");
   });
 });

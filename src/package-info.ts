@@ -1,4 +1,4 @@
 export const PACKAGE_INFO = {
   name: "@jerryan/pi-hashline-edit",
-  version: "0.7.4",
+  version: "0.8.0",
 };

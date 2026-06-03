@@ -246,6 +246,13 @@ export function generateDiffString(
   const hashPad = " ".repeat(ANCHOR_SEP.length + 2); // align with `${ANCHOR_SEP}HH${CONTENT_SEP}`
   const output: string[] = [];
 
+  // Build context array for hash computation (same normalization as getPreviewLines)
+  const newFileLines = newContent.length === 0
+    ? []
+    : newContent.endsWith("\n")
+      ? newContent.split("\n").slice(0, -1)
+      : newContent.split("\n");
+
   for (let h = 0; h < patch.hunks.length; h++) {
     const hunk = patch.hunks[h]!;
     if (h > 0) {
@@ -267,12 +274,12 @@ export function generateDiffString(
         oldLineNum++;
       } else if (prefix === "+") {
         const padded = String(newLineNum).padStart(lineNumWidth, " ");
-        const hash = computeLineHash(newLineNum, text);
+        const hash = computeLineHash(newFileLines, newLineNum - 1);
         output.push(`+${padded}${ANCHOR_SEP}${hash}${CONTENT_SEP}${text}`);
         newLineNum++;
       } else {
         const padded = String(newLineNum).padStart(lineNumWidth, " ");
-        const hash = computeLineHash(newLineNum, text);
+        const hash = computeLineHash(newFileLines, newLineNum - 1);
         output.push(` ${padded}${ANCHOR_SEP}${hash}${CONTENT_SEP}${text}`);
         oldLineNum++;
         newLineNum++;

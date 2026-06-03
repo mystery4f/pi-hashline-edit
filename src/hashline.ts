@@ -2,7 +2,7 @@
  * Hashline engine — hash-anchored line editing.
  *
  * Originally vendored & adapted from oh-my-pi (MIT, github.com/can1357/oh-my-pi).
- * Hash algorithm replaced with inline FNV-1a; lineIndex always incorporated.
+ * Hash algorithm: inline FNV-1a with surrounding-line context.
  */
 
 import { throwIfAborted } from "./runtime";
@@ -46,6 +46,36 @@ export const CONTENT_SEP = "│";
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
 
+function normalizeLine(line: string): string {
+  return line.replace(/\r/g, "").trimEnd();
+}
+
+/**
+ * Compute a context hash for line at `index` (0-based) within `fileLines`.
+ * The hash incorporates the line itself plus its immediate neighbors
+ * (previous and next), so distant edits do not invalidate anchors.
+ * Missing neighbors (file boundaries) contribute an empty string.
+ */
+export function computeLineHash(fileLines: string[], index: number): string {
+  const prev = index > 0 ? normalizeLine(fileLines[index - 1]!) : "";
+  const curr = normalizeLine(fileLines[index]!);
+  const next = index < fileLines.length - 1 ? normalizeLine(fileLines[index + 1]!) : "";
+
+  let hash = FNV_OFFSET;
+  for (let i = 0; i < prev.length; i++) {
+    hash = Math.imul(hash ^ prev.charCodeAt(i), FNV_PRIME);
+  }
+  hash = Math.imul(hash ^ 0, FNV_PRIME); // \0 delimiter
+  for (let i = 0; i < curr.length; i++) {
+    hash = Math.imul(hash ^ curr.charCodeAt(i), FNV_PRIME);
+  }
+  hash = Math.imul(hash ^ 0, FNV_PRIME); // \0 delimiter
+  for (let i = 0; i < next.length; i++) {
+    hash = Math.imul(hash ^ next.charCodeAt(i), FNV_PRIME);
+  }
+  return DICT[hash & 0xff];
+}
+
 /**
  * Patterns used to detect (and reject) hashline display prefixes inside edit
  * payloads. The runtime no longer strips them — the model must send literal
@@ -56,35 +86,6 @@ const HASHLINE_PREFIX_RE = new RegExp(
 const HASHLINE_PREFIX_PLUS_RE = new RegExp(
   `^\\+\\s*(?:\\d+\\s*${ANCHOR_SEP}\\s*|${ANCHOR_SEP}\\s*)?[0-9A-F]{2}${CONTENT_SEP}`);
 const DIFF_MINUS_RE = /^-\s*\d+\s{4}/;
-
-export function computeLineHash(idx: number, line: string): string {
-  line = line.replace(/\r/g, "").trimEnd();
-  // FNV-1a with lineIndex incorporated unconditionally
-  let hash = (FNV_OFFSET ^ idx) >>> 0;
-  for (let i = 0; i < line.length; i++) {
-    hash = Math.imul(hash ^ line.charCodeAt(i), FNV_PRIME);
-  }
-  return DICT[hash & 0xff];
-}
-
-/** Shared fuzzy-match Unicode replacement regexes (also used by edit-diff.ts). */
-export const FUZZY_SINGLE_QUOTES_RE = /[\u2018\u2019\u201A\u201B]/g;
-export const FUZZY_DOUBLE_QUOTES_RE = /[\u201C\u201D\u201E\u201F]/g;
-export const FUZZY_HYPHENS_RE = /[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g;
-export const FUZZY_UNICODE_SPACES_RE = /[\u00A0\u2002-\u200A\u202F\u205F\u3000]/g;
-
-function normalizeFuzzyLine(text: string): string {
-  return text
-    .trimEnd()
-    .replace(FUZZY_SINGLE_QUOTES_RE, "'")
-    .replace(FUZZY_DOUBLE_QUOTES_RE, '"')
-    .replace(FUZZY_HYPHENS_RE, "-")
-    .replace(FUZZY_UNICODE_SPACES_RE, " ");
-}
-
-function isFuzzyEquivalentLine(expected: string, actual: string): boolean {
-  return normalizeFuzzyLine(expected) === normalizeFuzzyLine(actual);
-}
 
 // ─── Parsing ────────────────────────────────────────────────────────────
 
@@ -217,7 +218,7 @@ function formatMismatchError(
     if (prev !== -1 && num > prev + 1) out.push("    ...");
     prev = num;
     const content = fileLines[num - 1];
-    const hash = computeLineHash(num, content);
+    const hash = computeLineHash(fileLines, num - 1);
     const prefix = `${String(num).padStart(lineNumberWidth, " ")}${ANCHOR_SEP}${hash}`;
     out.push(
       retryLineSet.has(num)
@@ -777,27 +778,12 @@ export function applyHashlineEdits(
 
   const mismatches: HashMismatch[] = [];
   const retryLines = new Set<number>();
-  const acceptedFuzzyRefs = new Set<string>();
   function validate(ref: Anchor): boolean {
     if (ref.line < 1 || ref.line > lineIndex.fileLines.length) {
       throw new Error(`[E_RANGE_OOB] Line ${ref.line} does not exist (file has ${lineIndex.fileLines.length} lines)`);
     }
-    const line = lineIndex.fileLines[ref.line - 1]!;
-    const actual = computeLineHash(ref.line, line);
+    const actual = computeLineHash(lineIndex.fileLines, ref.line - 1);
     if (actual === ref.hash) return true;
-    if (ref.textHint !== undefined) {
-      const hintedHash = computeLineHash(ref.line, ref.textHint);
-      if (hintedHash === ref.hash && isFuzzyEquivalentLine(ref.textHint, line)) {
-        const key = `${ref.line}:${ref.hash}:${ref.textHint}`;
-        if (!acceptedFuzzyRefs.has(key)) {
-          acceptedFuzzyRefs.add(key);
-          warnings.push(
-            `Accepted fuzzy anchor validation at line ${ref.line}: exact hash mismatched, but the copied line content still matched after whitespace/Unicode normalization.`,
-          );
-        }
-        return true;
-      }
-    }
     mismatches.push({ line: ref.line, expected: ref.hash, actual });
     retryLines.add(ref.line);
     return false;
@@ -981,17 +967,17 @@ export function computeAffectedLineRange(params: {
 }
 
 export function formatHashlineRegion(
-  lines: string[],
+  fileLines: string[],
   startLine: number,
+  endLine: number,
 ): string {
-  const lineNumberWidth = String(
-    startLine + Math.max(0, lines.length - 1),
-  ).length;
-  return lines
+  const lineNumberWidth = String(endLine).length;
+  return fileLines
+    .slice(startLine - 1, endLine)
     .map((line, index) => {
       const lineNumber = startLine + index;
       const paddedLineNumber = String(lineNumber).padStart(lineNumberWidth, " ");
-      return `${paddedLineNumber}${ANCHOR_SEP}${computeLineHash(lineNumber, line)}${CONTENT_SEP}${line}`;
+      return `${paddedLineNumber}${ANCHOR_SEP}${computeLineHash(fileLines, startLine - 1 + index)}${CONTENT_SEP}${line}`;
     })
     .join("\n");
 }

@@ -38,7 +38,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(2, "beta")}`;
+      const bRef = `2#${computeLineHash(["alpha", "beta", "gamma"], 1)}`;
 
       const result = await editTool.execute(
         "e1",
@@ -72,7 +72,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(2, "beta")}`;
+      const bRef = `2#${computeLineHash(["alpha", "beta"], 1)}`;
 
       const result = await editTool.execute(
         "e1",
@@ -104,7 +104,7 @@ describe("details.metrics surface (Phase 2 C — host-only observability)", () =
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const editTool = getTool("edit");
-      const bRef = `2#${computeLineHash(2, "beta")}`;
+      const bRef = `2#${computeLineHash(["alpha", "beta"], 1)}`;
 
       const result = await editTool.execute(
         "e1",

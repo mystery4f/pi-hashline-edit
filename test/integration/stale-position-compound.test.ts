@@ -9,8 +9,8 @@ import {
   type HashlineEdit,
 } from "../../src/hashline";
 
-function makeTag(line: number, text: string) {
-  return { line, hash: computeLineHash(line, text) };
+function makeTag(line: number, fileLines: string[]) {
+  return { line, hash: computeLineHash(fileLines, line - 1) };
 }
 
 describe("stale-position compound edits", () => {
@@ -35,7 +35,7 @@ describe("stale-position compound edits", () => {
     ];
 
     // Fix up the hash using the real computeLineHash function
-    const line5Hash = computeLineHash(5, "line5");
+    const line5Hash = computeLineHash(originalLines, 4);
     toolEdits[0].pos = `5#${line5Hash}`;
 
     // Resolve through the tool-schema → HashlineEdit pipeline
@@ -82,8 +82,7 @@ describe("stale-position compound edits", () => {
     expect(anchorRange!.end).toBe(10); // min(13, 8 + 2)
 
     // ── Verify formatHashlineRegion produces valid anchors ──
-    const regionLines = expectedLines.slice(anchorRange!.start - 1, anchorRange!.end);
-    const region = formatHashlineRegion(regionLines, anchorRange!.start);
+    const region = formatHashlineRegion(expectedLines, anchorRange!.start, anchorRange!.end);
     expect(region).toContain("header-1");
     expect(region).toContain("NEW_LINE_5");
     // Range ends at line 10 of final doc (8 + 2 context), which is "line7"
@@ -93,10 +92,10 @@ describe("stale-position compound edits", () => {
 
   it("tracks correct coordinates when replace shrinks and prepends shift upward", () => {
     // Replace 2 lines with 1 (shrink), plus prepend at BOF.
-    // The prepend's computeOffset must reflect the shrink delta.
     const content = "a\nb\nc\nd\ne";
+    const fileLines = content.split("\n");
     const edits: HashlineEdit[] = [
-      { op: "replace", pos: makeTag(3, "c"), end: makeTag(4, "d"), lines: ["C_D"] },
+      { op: "replace", pos: makeTag(3, fileLines), end: makeTag(4, fileLines), lines: ["C_D"] },
       { op: "prepend", lines: ["P1", "P2"] },
     ];
     const result = applyHashlineEdits(content, edits);
@@ -114,7 +113,7 @@ describe("stale-position compound edits", () => {
     const originalLines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`);
     const content = originalLines.join("\n");
 
-    const line5Hash = computeLineHash(5, "line5");
+    const line5Hash = computeLineHash(originalLines, 4);
     const edits: HashlineEdit[] = [
       { op: "replace", pos: { line: 5, hash: line5Hash }, lines: ["NEW_LINE_5"] },
       { op: "prepend", lines: ["header-1", "header-2", "header-3"] },
@@ -132,7 +131,8 @@ describe("stale-position compound edits", () => {
     }).toThrow(/stale anchor/);
 
     // The correct anchor uses the NEW line number (8) with a fresh hash.
-    const newLine5Hash = computeLineHash(8, "NEW_LINE_5");
+    const resultLines = result.content.split("\n");
+    const newLine5Hash = computeLineHash(resultLines, 7);
     const result2 = applyHashlineEdits(result.content, [
       { op: "replace", pos: { line: 8, hash: newLine5Hash }, lines: ["UPDATED_LINE_5"] },
     ]);

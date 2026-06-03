@@ -3,7 +3,7 @@ import { hashlineParseText, parseLineRef, computeLineHash } from "../../src/hash
 
 describe("parseLineRef", () => {
   it("parses standard LINE#HASH format", () => {
-    const hash = computeLineHash(5, "hello");
+    const hash = computeLineHash(["hello"], 0);
     const ref = parseLineRef(`5#${hash}`);
     expect(ref).toEqual({ line: 5, hash });
   });
@@ -19,7 +19,7 @@ describe("parseLineRef", () => {
   });
 
   it("tolerates leading +/- diff markers", () => {
-    const hash = computeLineHash(5, "content");
+    const hash = computeLineHash(["content"], 0);
     expect(parseLineRef(`+5#${hash}`)).toEqual({ line: 5, hash });
     expect(parseLineRef(`-5#${hash}`)).toEqual({ line: 5, hash });
   });

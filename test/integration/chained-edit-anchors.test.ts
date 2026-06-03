@@ -184,8 +184,10 @@ describe("chained edit anchors", () => {
     });
   });
 
-  it("unchanged line anchors from original read remain valid after chained edits", async () => {
-    await withTempFile("stale.ts", "alpha\nbeta\n", async ({ cwd }) => {
+  it("distant unchanged line anchors remain valid after chained edits", async () => {
+    // Context hashing: only immediate neighbors affect the hash. Editing line 4
+    // of a 4-line file should not invalidate line 1's anchor.
+    await withTempFile("stale.ts", "a\nb\nc\nd\n", async ({ cwd }) => {
       const { pi, getTool } = makeFakePiRegistry();
       register(pi);
       const ctx = { cwd, ui: { notify() {} } } as any;
@@ -194,36 +196,38 @@ describe("chained edit anchors", () => {
       const editTool = getTool("edit");
 
       const firstRead = await readTool.execute("r1", { path: "stale.ts" }, undefined, undefined, ctx);
-      const betaRef = extractRef(firstRead.content[0].text, "beta");
-      const alphaRef = extractRef(firstRead.content[0].text, "alpha");
+      const dRef = extractRef(firstRead.content[0].text, "d");
+      const aRef = extractRef(firstRead.content[0].text, "a");
 
       await editTool.execute(
         "e1",
-        { path: "stale.ts", edits: [{ range: [betaRef, betaRef], lines: ["BETA"] }] },
+        { path: "stale.ts", edits: [{ range: [dRef, dRef], lines: ["D"] }] },
         undefined,
         undefined,
         ctx,
       );
 
+      // Old dRef is stale because line 4 content changed
       await expect(
         editTool.execute(
           "e2-stale",
-          { path: "stale.ts", edits: [{ range: [betaRef, betaRef], lines: ["BETA-AGAIN"] }] },
+          { path: "stale.ts", edits: [{ range: [dRef, dRef], lines: ["D-AGAIN"] }] },
           undefined,
           undefined,
           ctx,
         ),
       ).rejects.toThrow(/stale anchor/);
 
-      const alphaEdit = await editTool.execute(
+      // Distant line 1 anchor is still valid (neighbors unchanged)
+      const aEdit = await editTool.execute(
         "e3",
-        { path: "stale.ts", edits: [{ range: [alphaRef, alphaRef], lines: ["ALPHA"] }] },
+        { path: "stale.ts", edits: [{ range: [aRef, aRef], lines: ["A"] }] },
         undefined,
         undefined,
         ctx,
       );
-      expect(alphaEdit.content[0].text).toContain("+1#");
-      expect(alphaEdit.content[0].text).toContain("│ALPHA");
+      expect(aEdit.content[0].text).toContain("+1#");
+      expect(aEdit.content[0].text).toContain("│A");
     });
   });
 });

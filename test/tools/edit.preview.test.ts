@@ -21,7 +21,7 @@ describe("computeEditPreview", () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "aaa\nbbb\nccc\n" });
 
-      const betaRef = `2#${computeLineHash(2, "bbb")}│bbb`;
+      const betaRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`;
       const preview = await computeEditPreview(
         {
           path: "sample.txt",
@@ -45,7 +45,7 @@ describe("computeEditPreview", () => {
       vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "aaa\nbbb\nccc\n" });
 
       await chmod(path, 0o444);
-      const betaRef = `2#${computeLineHash(2, "bbb")}│bbb`;
+      const betaRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`;
 
       try {
         const preview = await computeEditPreview(
@@ -74,7 +74,7 @@ describe("computeEditPreview", () => {
         new Error("preview should not call classifyFileKind on text paths"),
       );
 
-      const betaRef = `2#${computeLineHash(2, "bbb")}│bbb`;
+      const betaRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`;
       const preview = await computeEditPreview(
         {
           path: "sample.txt",
@@ -103,7 +103,7 @@ describe("computeEditPreview", () => {
         return { kind: "text", text: "aaa\nbbb\nccc\n" };
       });
 
-      const betaRef = `2#${computeLineHash(2, "bbb")}│bbb`;
+      const betaRef = `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`;
       const editArgs = {
         path: "sample.txt",
         edits: [{ range: [betaRef, betaRef], lines: ["BBB"] }],

@@ -92,7 +92,7 @@ describe("registerEditTool", () => {
           path: "sample.txt",
           edits: [
             {
-              range: [`2#${computeLineHash(2, "bbb")}`, `2#${computeLineHash(2, "bbb")}`],
+              range: [`2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`, `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}`],
               lines: ["BBB"],
             },
           ],
@@ -117,7 +117,7 @@ describe("registerEditTool", () => {
         path: "sample.txt",
         edits: [
           {
-            range: [`2#${computeLineHash(2, "bbb")}│bbb`, `2#${computeLineHash(2, "bbb")}│bbb`],
+            range: [`2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`, `2#${computeLineHash(["aaa", "bbb", "ccc"], 1)}│bbb`],
             lines: ["BBB"],
           },
         ],
@@ -152,7 +152,7 @@ describe("registerEditTool", () => {
       expect(rendered).not.toContain("Changes: +1 -1");
       expect(rendered).not.toContain("Diff preview:");
       expect(rendered).not.toContain("```diff");
-      expect(rendered).toContain(`+2#${computeLineHash(2, "BBB")}│BBB`);
+      expect(rendered).toContain(`+2#${computeLineHash(["aaa", "BBB", "ccc"], 1)}│BBB`);
       expect(rendered).not.toContain("Updated sample.txt");
       expect(rendered).not.toContain("```text");
       expect(result.details?.diff).toContain("+2");

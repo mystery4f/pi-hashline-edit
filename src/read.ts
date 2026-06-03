@@ -95,7 +95,7 @@ export function formatHashlineReadPreview(
     ? Math.min(startLine - 1 + limit, totalLines)
     : totalLines;
   const selected = allLines.slice(startLine - 1, endIdx);
-  const formatted = options.raw ? selected.join("\n") : formatHashlineRegion(selected, startLine);
+  const formatted = options.raw ? selected.join("\n") : formatHashlineRegion(allLines, startLine, endIdx);
 
   const truncation = truncateHead(formatted);
   if (truncation.firstLineExceedsLimit) {

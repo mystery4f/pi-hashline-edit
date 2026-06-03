@@ -23,7 +23,7 @@ describe("strict hashline tool loop", () => {
         "e1",
         {
           path: "sample.ts",
-          edits: [{ range: [betaRef, betaRef], lines: ["BETA"] }],
+          edits: [{ range: [betaRef, betaRef], lines: ["BETA1"] }],
         },
         undefined,
         undefined,
@@ -35,7 +35,7 @@ describe("strict hashline tool loop", () => {
           "e2",
           {
             path: "sample.ts",
-            edits: [{ range: [betaRef, betaRef], lines: ["BETA-AGAIN"] }],
+            edits: [{ range: [betaRef, betaRef], lines: ["BETA2"] }],
           },
           undefined,
           undefined,
@@ -47,14 +47,14 @@ describe("strict hashline tool loop", () => {
       const secondText = secondRead.content[0].text as string;
       const freshRef = secondText
         .split("\n")
-        .find((line: string) => line.includes("│BETA"))!
+        .find((line: string) => line.includes("│BETA1"))!
         .split("│")[0]!;
 
       await editTool.execute(
         "e3",
         {
           path: "sample.ts",
-          edits: [{ range: [freshRef, freshRef], lines: ["BETA-AGAIN"] }],
+          edits: [{ range: [freshRef, freshRef], lines: ["BETA2"] }],
         },
         undefined,
         undefined,
