@@ -15,7 +15,7 @@ This is a fork of the original [pi-hashline-edit](https://github.com/earendil-wo
 - **Single edit shape.** One entry type: `{ range: [start, end], lines: [...] }`. No `op` field, no `append`/`prepend`/`replace_text` ops, no `after`/`before`. The tuple enforces explicit endpoint anchors, eliminating the common "forgot `end`" failure mode.
 - **Standard hex hash alphabet.** `0-9 A-F` instead of `ZPMQVRWSNKTXJBYH`. Hex pairs are more likely to be single tokens.
 - **Symmetric boundary-duplication detection.** Runtime warnings catch duplicated boundary lines on both sides of a replacement, not just trailing.
-- **`read` raw mode.** `raw: true` returns plain text without `LINE#HASH:` anchors, for reads that don't plan to edit.
+- **`read` raw mode.** `raw: true` returns plain text without `LINE#HASH│` anchors, for reads that don't plan to edit.
 - **Inline FNV-1a hashing.** Replaces `xxhashjs` dependency. Always incorporates line index.
 - **Minimal prompt surface.** Prompt text describes what the model needs to use the tool; return-format documentation and error catalogues are omitted.
 - **No legacy compatibility.** The `{ oldText, newText }` substring-replace format is not accepted. The schema is hashline-only.
