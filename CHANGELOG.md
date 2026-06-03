@@ -5,6 +5,7 @@
 - **Accept non-UTF-8 text files.** Legacy encodings (CP1251, ANSI, GBK) are no longer rejected as binary. Invalid bytes decode to U+FFFD, matching vanilla pi's built-in read tool. This prevents the model from falling back to raw `sed` edits that bypass hashline's anchor safety.
 - **Warn on non-UTF-8 bytes in read.** If the decoded text contains U+FFFD, a warning is appended: `[Non-UTF-8 bytes shown as U+FFFD; editing rewrites the file as UTF-8.]`. Detected on the full file, not just the visible slice, so out-of-view bad bytes still surface.
 - **Package identifier in result details.** Both `read` and `edit` results now include `package: { name: "@jerryan/pi-hashline-edit", version: "0.7.4" }` in `details`, making it easy to identify hashline tool calls in session history. Join by `toolCallId` to link calls and results.
+
 ## 0.7.3
 
 - **Content separator changed from `:` to `│` (U+2502).** The `│` character almost never appears in source code or documentation, making accidental inclusion in edit payloads far less likely.
