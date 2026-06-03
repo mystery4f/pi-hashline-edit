@@ -6,6 +6,7 @@
  */
 
 import { generateDiffString } from "./edit-diff";
+import { PACKAGE_INFO } from "./package-info";
 
 // ─── Public types ───────────────────────────────────────────────────────
 
@@ -117,6 +118,7 @@ export function buildNoopResponse(input: NoopResponseInput): ToolResult {
       snapshotId,
       classification: "noop" as const,
       metrics,
+      package: PACKAGE_INFO,
     },
   };
 }
@@ -149,6 +151,7 @@ export function buildChangedResponse(input: SuccessResponseInput): ToolResult {
       diff: diffResult.diff,
       snapshotId,
       metrics,
+      package: PACKAGE_INFO,
     },
   };
 }

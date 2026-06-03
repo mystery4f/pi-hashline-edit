@@ -68,6 +68,7 @@ type HashlineEditToolDetails = {
   snapshotId?: string;
   classification?: "noop";
   metrics?: EditMetrics;
+  package: { name: string; version: string };
 };
 
 const EDIT_DESC = readFileSync(

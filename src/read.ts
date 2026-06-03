@@ -17,6 +17,7 @@ import { formatHashlineRegion } from "./hashline";
 import { resolveToCwd } from "./path-utils";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
+import { PACKAGE_INFO } from "./package-info";
 
 const READ_DESC = readFileSync(
   new URL("../tool-descriptions/read.md", import.meta.url),
@@ -232,6 +233,7 @@ export function registerReadTool(pi: ExtensionAPI): void {
             truncated: !!preview.truncation,
             ...(preview.nextOffset !== undefined ? { next_offset: preview.nextOffset } : {}),
           },
+          package: PACKAGE_INFO,
         },
       };
     },
