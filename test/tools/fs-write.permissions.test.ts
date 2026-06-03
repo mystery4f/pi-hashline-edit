@@ -25,7 +25,7 @@ describe("writeFileAtomically permissions", () => {
     lstatMock.mockResolvedValue({ isSymbolicLink: () => false });
   });
 
-  it("creates the temporary replacement file with the target mode immediately", async () => {
+  it.skipIf(process.platform === "win32")("creates the temporary replacement file with the target mode immediately", async () => {
     const { writeFileAtomically } = await import("../../src/fs-write");
 
     await writeFileAtomically("/tmp/secret.txt", "secret\n");

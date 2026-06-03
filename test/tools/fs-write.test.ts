@@ -5,7 +5,7 @@ import { withTempFile } from "../support/fixtures";
 import { writeFileAtomically } from "../../src/fs-write";
 
 describe("writeFileAtomically", () => {
-  it("creates new files with owner-only permissions", async () => {
+  it.skipIf(process.platform === "win32")("creates new files with owner-only permissions", async () => {
     await withTempFile("seed.txt", "seed\n", async ({ cwd }) => {
       const path = join(cwd, "created.txt");
 
@@ -16,7 +16,7 @@ describe("writeFileAtomically", () => {
     });
   });
 
-  it("preserves the target file mode when replacing an existing file", async () => {
+  it.skipIf(process.platform === "win32")("preserves the target file mode when replacing an existing file", async () => {
     await withTempFile("script.sh", "echo before\n", async ({ path }) => {
       await chmod(path, 0o755);
 
@@ -27,7 +27,7 @@ describe("writeFileAtomically", () => {
     });
   });
 
-  it("updates a symlink target without replacing the symlink", async () => {
+  it.skipIf(process.platform === "win32")("updates a symlink target without replacing the symlink", async () => {
     await withTempFile("target.txt", "before\n", async ({ cwd, path: targetPath }) => {
       const linkPath = `${cwd}/linked.txt`;
       await symlink("target.txt", linkPath);
@@ -40,7 +40,7 @@ describe("writeFileAtomically", () => {
     });
   });
 
-  it("follows a dangling symlink chain through to the missing terminal target", async () => {
+  it.skipIf(process.platform === "win32")("follows a dangling symlink chain through to the missing terminal target", async () => {
     await withTempFile("seed.txt", "seed\n", async ({ cwd }) => {
       const intermediateLinkPath = join(cwd, "level-2.txt");
       const topLinkPath = join(cwd, "level-1.txt");

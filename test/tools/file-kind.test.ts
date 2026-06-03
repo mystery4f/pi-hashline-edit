@@ -133,16 +133,17 @@ describe("classifyFileKind", () => {
     );
   });
 
-  it("classifies invalid utf-8 without null bytes as binary", async () => {
+  it("reads invalid utf-8 without null bytes as text with replacement characters", async () => {
     await withTempBytes("sample.bin", new Uint8Array([0xc3, 0x28]), async ({ path }) => {
-      await expect(classifyFileKind(path)).resolves.toEqual({
-        kind: "binary",
-        description: "invalid UTF-8",
-      });
+      const loaded = await loadFileKindAndText(path);
+      expect(loaded.kind).toBe("text");
+      if (loaded.kind === "text") {
+        expect(loaded.text).toContain("\uFFFD");
+      }
     });
   });
 
-  it("classifies invalid utf-8 beyond the sniff window as binary", async () => {
+  it("reads invalid utf-8 beyond the sniff window as text with replacement characters", async () => {
     const prefix = new Uint8Array(9000).fill(0x61);
     const invalid = new Uint8Array([0xc3, 0x28]);
     const suffix = new Uint8Array([0x0a]);
@@ -152,10 +153,11 @@ describe("classifyFileKind", () => {
     bytes.set(suffix, prefix.length + invalid.length);
 
     await withTempBytes("late-invalid.bin", bytes, async ({ path }) => {
-      await expect(classifyFileKind(path)).resolves.toEqual({
-        kind: "binary",
-        description: "invalid UTF-8",
-      });
+      const loaded = await loadFileKindAndText(path);
+      expect(loaded.kind).toBe("text");
+      if (loaded.kind === "text") {
+        expect(loaded.text).toContain("\uFFFD");
+      }
     });
   });
 
@@ -342,7 +344,7 @@ describe("file kind guards in tools", () => {
     );
   });
 
-  it("read rejects binary files even when invalid bytes appear after the sniff window", async () => {
+  it("read accepts non-utf-8 text and warns about U+FFFD replacement", async () => {
     const prefix = new Uint8Array(9000).fill(0x61);
     const invalid = new Uint8Array([0xc3, 0x28]);
     const suffix = new Uint8Array([0x0a]);
@@ -356,15 +358,17 @@ describe("file kind guards in tools", () => {
       register(pi);
       const readTool = getTool("read");
 
-      await expect(
-        readTool.execute(
-          "r1",
-          { path: "late-invalid.bin" },
-          undefined,
-          undefined,
-          { cwd } as any,
-        ),
-      ).rejects.toThrow(/Path is a binary file: late-invalid\.bin \(invalid UTF-8\)/i);
+      const result = await readTool.execute(
+        "r1",
+        { path: "late-invalid.bin" },
+        undefined,
+        undefined,
+        { cwd } as any,
+      );
+
+      const text = getText(result);
+      expect(text).toContain("\uFFFD");
+      expect(text).toMatch(/Non-UTF-8 bytes shown as U\+FFFD/i);
     });
   });
 
