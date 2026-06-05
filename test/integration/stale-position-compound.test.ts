@@ -21,22 +21,21 @@ describe("stale-position compound edits", () => {
 
     // Two edits provided in bottom-up order (as the model would send them):
     // 1. Replace line 5 ("line5") with new content
-    // 2. Prepend 3 lines at BOF
+    // 2. Prepend 3 lines at BOF by replacing line 1 with headers + original line 1
+    const line5Hash = computeLineHash(originalLines, 4);
+    const line1Hash = computeLineHash(originalLines, 0);
     const toolEdits: HashlineToolEdit[] = [
       {
         op: "replace",
-        pos: "5#JR", // hash computed below
+        pos: `5#${line5Hash}`,
         lines: ["NEW_LINE_5"],
       },
       {
-        op: "prepend",
-        lines: ["header-1", "header-2", "header-3"],
+        op: "replace",
+        pos: `1#${line1Hash}`,
+        lines: ["header-1", "header-2", "header-3", "line1"],
       },
     ];
-
-    // Fix up the hash using the real computeLineHash function
-    const line5Hash = computeLineHash(originalLines, 4);
-    toolEdits[0].pos = `5#${line5Hash}`;
 
     // Resolve through the tool-schema → HashlineEdit pipeline
     const resolved: HashlineEdit[] = resolveEditAnchors(toolEdits);
@@ -63,7 +62,7 @@ describe("stale-position compound edits", () => {
     expect(result.content).toBe(expectedLines.join("\n"));
 
     // ── Verify firstChangedLine and lastChangedLine in final-document coordinates ──
-    // Prepend inserted at lines 1-3, replace shifted by +3 → NEW_LINE_5 at line 8.
+    // BOF replace inserted at lines 1-3, replace shifted by +3 → NEW_LINE_5 at line 8.
     expect(result.firstChangedLine).toBe(1);
     expect(result.lastChangedLine).toBe(8);
 
@@ -91,12 +90,13 @@ describe("stale-position compound edits", () => {
   });
 
   it("tracks correct coordinates when replace shrinks and prepends shift upward", () => {
-    // Replace 2 lines with 1 (shrink), plus prepend at BOF.
+    // Replace 2 lines with 1 (shrink), plus prepend at BOF by replacing line 1.
     const content = "a\nb\nc\nd\ne";
     const fileLines = content.split("\n");
+    const line1Hash = computeLineHash(fileLines, 0);
     const edits: HashlineEdit[] = [
       { op: "replace", pos: makeTag(3, fileLines), end: makeTag(4, fileLines), lines: ["C_D"] },
-      { op: "prepend", lines: ["P1", "P2"] },
+      { op: "replace", pos: { line: 1, hash: line1Hash }, lines: ["P1", "P2", "a"] },
     ];
     const result = applyHashlineEdits(content, edits);
 
@@ -114,9 +114,10 @@ describe("stale-position compound edits", () => {
     const content = originalLines.join("\n");
 
     const line5Hash = computeLineHash(originalLines, 4);
+    const line1Hash = computeLineHash(originalLines, 0);
     const edits: HashlineEdit[] = [
       { op: "replace", pos: { line: 5, hash: line5Hash }, lines: ["NEW_LINE_5"] },
-      { op: "prepend", lines: ["header-1", "header-2", "header-3"] },
+      { op: "replace", pos: { line: 1, hash: line1Hash }, lines: ["header-1", "header-2", "header-3", "line1"] },
     ];
 
     const result = applyHashlineEdits(content, edits);

@@ -10,11 +10,12 @@ import { throwIfAborted } from "./runtime";
 // --- Types ---
 
 export type Anchor = { line: number; hash: string; textHint?: string };
-export type HashlineEdit =
-  | { op: "replace"; pos: Anchor; end?: Anchor; lines: string[] }
-  | { op: "append"; pos?: Anchor; lines: string[] }
-  | { op: "prepend"; pos?: Anchor; lines: string[] }
-  | { op: "replace_text"; oldText: string; newText: string };
+export type HashlineEdit = {
+  op: "replace";
+  pos: Anchor;
+  end?: Anchor;
+  lines: string[];
+};
 
 interface HashMismatch {
   line: number;
@@ -140,7 +141,7 @@ export function parseLineRef(ref: string): { line: number; hash: string } {
 
 function parseAnchorRef(ref: string): Anchor {
   const core = ref.replace(/^\s*[>+-]*\s*/, "").trimEnd();
-  const match = core.match(new RegExp(`^([0-9]+)\s*${ANCHOR_SEP}\s*([^\s${CONTENT_SEP}]+)(?:\s*${CONTENT_SEP}(.*))?$`, 's'));
+  const match = core.match(new RegExp(`^([0-9]+)\\s*${ANCHOR_SEP}\\s*([^\\s${CONTENT_SEP}]+)(?:\\s*${CONTENT_SEP}(.*))?$`, "s"));
   if (!match) {
     throw new Error(diagnoseLineRef(ref));
   }
@@ -272,119 +273,32 @@ export function hashlineParseText(edit: string[] | string | null): string[] {
 /**
  * Map flat tool-schema edits into typed internal representations.
  *
- * Strict: provided anchors must parse successfully. Missing anchors are
- * fine for append (→ EOF) and prepend (→ BOF), but a malformed anchor
- * that was explicitly supplied is always an error.
- *
- * - replace + pos only → single-line replace
- * - replace + pos + end → range replace
- * - append + pos → append after that anchor
- * - prepend + pos → prepend before that anchor
- * - replace_text + oldText/newText → exact unique text replace
- * - no anchors → file-level append/prepend (only for those ops)
- *
- * Unknown or missing ops are rejected explicitly.
+ * Strict: provided anchors must parse successfully.
  */
 export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
-  const result: HashlineEdit[] = [];
-  for (const edit of edits) {
-    const op = edit.op;
-    if (
-      op !== "replace" &&
-      op !== "append" &&
-      op !== "prepend" &&
-      op !== "replace_text"
-    ) {
-      throw new Error(
-        `[E_BAD_OP] Unknown edit op "${op}". Expected "replace", "append", "prepend", or "replace_text".`,
-      );
-    }
-
-    switch (op) {
-      case "replace": {
-        if (!edit.pos) {
-          throw new Error('[E_BAD_OP] Replace requires a "pos" anchor.');
-        }
-
-        result.push({
-          op: "replace",
-          pos: parseAnchorRef(edit.pos),
-          ...(edit.end ? { end: parseAnchorRef(edit.end) } : {}),
-          lines: hashlineParseText(edit.lines ?? null),
-        });
-        break;
-      }
-      case "append": {
-        if (edit.end !== undefined) {
-          throw new Error('[E_BAD_OP] Append does not support "end". Use "pos" or omit it for EOF.');
-        }
-
-        result.push({
-          op: "append",
-          ...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-          lines: hashlineParseText(edit.lines ?? null),
-        });
-        break;
-      }
-      case "prepend": {
-        if (edit.end !== undefined) {
-          throw new Error('[E_BAD_OP] Prepend does not support "end". Use "pos" or omit it for BOF.');
-        }
-
-        result.push({
-          op: "prepend",
-          ...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-          lines: hashlineParseText(edit.lines ?? null),
-        });
-        break;
-      }
-      case "replace_text": {
-        const oldText = normalizeExactText(edit.oldText);
-        const newText = normalizeExactText(edit.newText);
-        if (oldText === undefined || newText === undefined) {
-          throw new Error('[E_BAD_OP] replace_text requires string "oldText" and "newText" fields.');
-        }
-
-        result.push({
-          op: "replace_text",
-          oldText,
-          newText,
-        });
-        break;
-      }
-    }
-  }
-  return result;
+  return edits.map((edit) => ({
+    op: "replace",
+    pos: parseAnchorRef(edit.pos),
+    ...(edit.end ? { end: parseAnchorRef(edit.end) } : {}),
+    lines: hashlineParseText(edit.lines ?? null),
+  }));
 }
 
 // ─── Main edit engine ───────────────────────────────────────────────────
 
 /** Schema-level edit as received from the tool layer (pos/end are tag strings, lines may be string|null). */
 export type HashlineToolEdit = {
-  op: string;
-  pos?: string;
+  op: "replace";
+  pos: string;
   end?: string;
   lines?: string[] | string | null;
-  oldText?: string;
-  newText?: string;
 };
-
-function normalizeExactText(text: string | undefined): string | undefined {
-  if (typeof text !== "string") {
-    return undefined;
-  }
-
-  return text.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-}
 
 function maybeWarnSuspiciousUnicodeEscapePlaceholder(
   edits: HashlineEdit[],
   warnings: string[],
 ): void {
   for (const edit of edits) {
-    if (edit.op === "replace_text") {
-      continue;
-    }
     if (edit.lines.some((line) => /\\uDDDD/i.test(line))) {
       warnings.push(
         "Detected literal \\uDDDD in edit content; no autocorrection applied. Verify whether this should be a real Unicode escape or plain text.",
@@ -394,20 +308,16 @@ function maybeWarnSuspiciousUnicodeEscapePlaceholder(
 }
 
 type ResolvedEditSpan = {
-  kind: "replace" | "insert";
   index: number;
   label: string;
   start: number;
   end: number;
   replacement: string;
-  boundary?: number;
-  insertMode?: "append-empty-origin" | "prepend-empty-origin";
 };
 
 type LineIndex = {
   fileLines: string[];
   lineStarts: number[];
-  hasTerminalNewline: boolean;
 };
 
 function buildLineIndex(content: string): LineIndex {
@@ -423,11 +333,7 @@ function buildLineIndex(content: string): LineIndex {
     }
   }
 
-  return {
-    fileLines,
-    lineStarts,
-    hasTerminalNewline: content.endsWith("\n"),
-  };
+  return { fileLines, lineStarts };
 }
 
 function previewText(text: string): string {
@@ -436,22 +342,9 @@ function previewText(text: string): string {
 }
 
 function describeEdit(edit: HashlineEdit): string {
-  switch (edit.op) {
-    case "replace":
-      return edit.end
-        ? `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}-${edit.end.line}${ANCHOR_SEP}${edit.end.hash}`
-        : `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`;
-    case "append":
-      return edit.pos
-        ? `append after ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`
-        : "append at EOF";
-    case "prepend":
-      return edit.pos
-        ? `prepend before ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`
-        : "prepend at BOF";
-    case "replace_text":
-      return `replace_text \"${previewText(edit.oldText)}\"`;
-  }
+  return edit.end
+    ? `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}-${edit.end.line}${ANCHOR_SEP}${edit.end.hash}`
+    : `replace ${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`;
 }
 
 function throwEditConflict(
@@ -465,97 +358,11 @@ function throwEditConflict(
 }
 
 function cloneHashlineEdit(edit: HashlineEdit): HashlineEdit {
-  switch (edit.op) {
-    case "replace":
-      return {
-        op: "replace",
-        pos: { ...edit.pos },
-        ...(edit.end ? { end: { ...edit.end } } : {}),
-        lines: [...edit.lines],
-      };
-    case "append":
-      return {
-        op: "append",
-        ...(edit.pos ? { pos: { ...edit.pos } } : {}),
-        lines: [...edit.lines],
-      };
-    case "prepend":
-      return {
-        op: "prepend",
-        ...(edit.pos ? { pos: { ...edit.pos } } : {}),
-        lines: [...edit.lines],
-      };
-    case "replace_text":
-      return {
-        op: "replace_text",
-        oldText: edit.oldText,
-        newText: edit.newText,
-      };
-  }
-}
-
-function computeInsertionBoundary(
-  edit: Extract<HashlineEdit, { op: "append" | "prepend" }>,
-  lineIndex: LineIndex,
-): number {
-  switch (edit.op) {
-    case "append": {
-      const fileLineCount = lineIndex.fileLines.length;
-      const eofBoundary = lineIndex.hasTerminalNewline && fileLineCount > 0
-        ? fileLineCount - 1
-        : fileLineCount;
-      return edit.pos
-        ? lineIndex.hasTerminalNewline && edit.pos.line === fileLineCount
-          ? eofBoundary
-          : edit.pos.line
-        : eofBoundary;
-    }
-    case "prepend":
-      return edit.pos ? edit.pos.line - 1 : 0;
-  }
-}
-
-function findExactUniqueTextMatch(
-  content: string,
-  oldText: string,
-): { start: number; end: number } {
-  if (oldText.length === 0) {
-    throw new Error("[E_BAD_OP] replace_text requires non-empty oldText.");
-  }
-
-  const matches: number[] = [];
-  let from = 0;
-  while (from <= content.length - oldText.length) {
-    const index = content.indexOf(oldText, from);
-    if (index === -1) {
-      break;
-    }
-    matches.push(index);
-    from = index + 1;
-  }
-
-  for (let index = 1; index < matches.length; index++) {
-    if (matches[index]! - matches[index - 1]! < oldText.length) {
-      throw new Error(
-        "[E_MULTI_MATCH] replace_text found overlapping exact matches; re-read and use hashline edits.",
-      );
-    }
-  }
-
-  if (matches.length === 0) {
-    throw new Error("[E_NO_MATCH] replace_text found no exact unique match in the current file.");
-  }
-
-  if (matches.length > 1) {
-    throw new Error(
-      "[E_MULTI_MATCH] replace_text found multiple exact matches in the current file. Re-read and use hashline edits.",
-    );
-  }
-
-  const start = matches[0]!;
   return {
-    start,
-    end: start + oldText.length,
+    op: "replace",
+    pos: { ...edit.pos },
+    ...(edit.end ? { end: { ...edit.end } } : {}),
+    lines: [...edit.lines],
   };
 }
 
@@ -566,162 +373,60 @@ function resolveEditToSpan(
   lineIndex: LineIndex,
   noopEdits: NoopEdit[],
 ): ResolvedEditSpan | null {
-  const { fileLines, lineStarts, hasTerminalNewline } = lineIndex;
+  const { fileLines, lineStarts } = lineIndex;
 
-  switch (edit.op) {
-    case "replace": {
-      const startLine = edit.pos.line;
-      const endLine = edit.end?.line ?? edit.pos.line;
-      const originalLines = fileLines.slice(startLine - 1, endLine);
-      if (
-        originalLines.length === edit.lines.length &&
-        originalLines.every((line, lineIndex) => line === edit.lines[lineIndex])
-      ) {
-        noopEdits.push({
-          editIndex: index,
-          loc: `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`,
-          currentContent: originalLines.join("\n"),
-        });
-        return null;
-      }
-
-      if (edit.lines.length > 0) {
-        return {
-          kind: "replace",
-          index,
-          label: describeEdit(edit),
-          start: lineStarts[startLine - 1]!,
-          end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
-          replacement: edit.lines.join("\n"),
-        };
-      }
-
-      if (startLine === 1 && endLine === fileLines.length) {
-        return {
-          kind: "replace",
-          index,
-          label: describeEdit(edit),
-          start: 0,
-          end: content.length,
-          replacement: "",
-        };
-      }
-
-      if (endLine < fileLines.length) {
-        return {
-          kind: "replace",
-          index,
-          label: describeEdit(edit),
-          start: lineStarts[startLine - 1]!,
-          end: lineStarts[endLine]!,
-          replacement: "",
-        };
-      }
-
-      return {
-        kind: "replace",
-        index,
-        label: describeEdit(edit),
-        start: Math.max(0, lineStarts[startLine - 1]! - 1),
-        end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
-        replacement: "",
-      };
-    }
-    case "append": {
-      if (edit.lines.length === 0) {
-        noopEdits.push({
-          editIndex: index,
-          loc: edit.pos ? `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}` : "EOF",
-          currentContent: edit.pos ? fileLines[edit.pos.line - 1] ?? "" : "",
-        });
-        return null;
-      }
-
-      const insertedText = edit.lines.join("\n");
-      if (content.length === 0) {
-        return {
-          kind: "insert",
-          index,
-          label: describeEdit(edit),
-          start: 0,
-          end: 0,
-          replacement: insertedText,
-          boundary: computeInsertionBoundary(edit, lineIndex),
-          insertMode: "append-empty-origin",
-        };
-      }
-
-      if (!edit.pos) {
-        return {
-          kind: "insert",
-          index,
-          label: describeEdit(edit),
-          start: content.length,
-          end: content.length,
-          replacement: hasTerminalNewline ? `${insertedText}\n` : `\n${insertedText}`,
-          boundary: computeInsertionBoundary(edit, lineIndex),
-        };
-      }
-
-      const isSentinelAppend = hasTerminalNewline && edit.pos.line === fileLines.length;
-      return {
-        kind: "insert",
-        index,
-        label: describeEdit(edit),
-        start: isSentinelAppend
-          ? content.length
-          : lineStarts[edit.pos.line - 1]! + fileLines[edit.pos.line - 1]!.length,
-        end: isSentinelAppend
-          ? content.length
-          : lineStarts[edit.pos.line - 1]! + fileLines[edit.pos.line - 1]!.length,
-        replacement: isSentinelAppend ? `${insertedText}\n` : `\n${insertedText}`,
-        boundary: computeInsertionBoundary(edit, lineIndex),
-      };
-    }
-    case "prepend": {
-      if (edit.lines.length === 0) {
-        noopEdits.push({
-          editIndex: index,
-          loc: edit.pos ? `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}` : "BOF",
-          currentContent: edit.pos ? fileLines[edit.pos.line - 1] ?? "" : "",
-        });
-        return null;
-      }
-
-      const insertedText = edit.lines.join("\n");
-      const start = edit.pos ? lineStarts[edit.pos.line - 1]! : 0;
-      return {
-        kind: "insert",
-        index,
-        label: describeEdit(edit),
-        start,
-        end: start,
-        replacement: content.length === 0 ? insertedText : `${insertedText}\n`,
-        boundary: computeInsertionBoundary(edit, lineIndex),
-        ...(content.length === 0 ? { insertMode: "prepend-empty-origin" as const } : {}),
-      };
-    }
-    case "replace_text": {
-      const match = findExactUniqueTextMatch(content, edit.oldText);
-      if (edit.oldText === edit.newText) {
-        noopEdits.push({
-          editIndex: index,
-          loc: `replace_text \"${previewText(edit.oldText)}\"`,
-          currentContent: edit.oldText,
-        });
-        return null;
-      }
-
-      return {
-        kind: "replace",
-        index,
-        label: describeEdit(edit),
-        start: match.start,
-        end: match.end,
-        replacement: edit.newText,
-      };
-    }
+  const startLine = edit.pos.line;
+  const endLine = edit.end?.line ?? edit.pos.line;
+  const originalLines = fileLines.slice(startLine - 1, endLine);
+  if (
+    originalLines.length === edit.lines.length &&
+    originalLines.every((line, lineIndex) => line === edit.lines[lineIndex])
+  ) {
+    noopEdits.push({
+      editIndex: index,
+      loc: `${edit.pos.line}${ANCHOR_SEP}${edit.pos.hash}`,
+      currentContent: originalLines.join("\n"),
+    });
+    return null;
   }
+
+  if (edit.lines.length > 0) {
+    return {
+      index,
+      label: describeEdit(edit),
+      start: lineStarts[startLine - 1]!,
+      end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
+      replacement: edit.lines.join("\n"),
+    };
+  }
+
+  if (startLine === 1 && endLine === fileLines.length) {
+    return {
+      index,
+      label: describeEdit(edit),
+      start: 0,
+      end: content.length,
+      replacement: "",
+    };
+  }
+
+  if (endLine < fileLines.length) {
+    return {
+      index,
+      label: describeEdit(edit),
+      start: lineStarts[startLine - 1]!,
+      end: lineStarts[endLine]!,
+      replacement: "",
+    };
+  }
+
+  return {
+    index,
+    label: describeEdit(edit),
+    start: Math.max(0, lineStarts[startLine - 1]! - 1),
+    end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
+    replacement: "",
+  };
 }
 
 function assertNoConflictingSpans(spans: ResolvedEditSpan[]): void {
@@ -729,29 +434,8 @@ function assertNoConflictingSpans(spans: ResolvedEditSpan[]): void {
     const left = spans[leftIndex]!;
     for (let rightIndex = leftIndex + 1; rightIndex < spans.length; rightIndex++) {
       const right = spans[rightIndex]!;
-
-      if (left.kind === "insert" && right.kind === "insert") {
-        if (left.boundary === right.boundary) {
-          throwEditConflict(left, right, "target the same insertion boundary");
-        }
-        continue;
-      }
-
-      if (left.kind === "replace" && right.kind === "replace") {
-        if (left.start < right.end && right.start < left.end) {
-          throwEditConflict(left, right, "overlap on the same original line range");
-        }
-        continue;
-      }
-
-      const replaceSpan = left.kind === "replace" ? left : right;
-      const insertSpan = left.kind === "insert" ? left : right;
-      if (insertSpan.start >= replaceSpan.start && insertSpan.start < replaceSpan.end) {
-        throwEditConflict(
-          left,
-          right,
-          "cannot be applied together because one inserts inside a replaced original range",
-        );
+      if (left.start < right.end && right.start < left.end) {
+        throwEditConflict(left, right, "overlap on the same original line range");
       }
     }
   }
@@ -791,65 +475,40 @@ export function applyHashlineEdits(
 
   for (const edit of workingEdits) {
     throwIfAborted(signal);
-    switch (edit.op) {
-      case "replace": {
-        if (edit.end) {
-          if (edit.pos.line > edit.end.line) {
-            throw new Error(
-              `[E_BAD_RANGE] Range start line ${edit.pos.line} must be <= end line ${edit.end.line}`,
-            );
-          }
-          const startOk = validate(edit.pos);
-          const endOk = validate(edit.end);
-          if (!startOk && endOk) {
-            retryLines.add(edit.end.line);
-          }
-          if (startOk && !endOk) {
-            retryLines.add(edit.pos.line);
-          }
-          if (!startOk || !endOk) continue;
-        } else if (!validate(edit.pos)) {
-          continue;
-        }
-        const startLine = edit.pos.line;
-        const endLine = edit.end?.line ?? edit.pos.line;
-
-        // Check both boundaries for duplication
-        const checkBoundary = (candidate: string | undefined, boundary: string | undefined, label: string) => {
-          if (!candidate || !boundary) return;
-          const c = candidate.trim();
-          const b = boundary.trim();
-          if (c && /[\p{L}\p{N}]/u.test(c) && c === b) {
-            warnings.push(
-              `Potential boundary duplication ${label} ${describeEdit(edit)}: the replacement ${label === "after" ? "ends" : "starts"} with a line that matches the ${label === "after" ? "next surviving" : "preceding"} line after trim.`,
-            );
-          }
-        };
-        checkBoundary(edit.lines.at(-1), lineIndex.fileLines[endLine], "after");
-        if (startLine > 1) checkBoundary(edit.lines[0], lineIndex.fileLines[startLine - 2], "before");
-        break;
+    if (edit.end) {
+      if (edit.pos.line > edit.end.line) {
+        throw new Error(
+          `[E_BAD_RANGE] Range start line ${edit.pos.line} must be <= end line ${edit.end.line}`,
+        );
       }
-      case "append": {
-        if (edit.pos && !validate(edit.pos)) continue;
-        if (edit.lines.length === 0) {
-          throw new Error(
-            "[E_BAD_OP] Append with empty lines payload. Provide content to insert or remove the edit.",
-          );
-        }
-        break;
+      const startOk = validate(edit.pos);
+      const endOk = validate(edit.end);
+      if (!startOk && endOk) {
+        retryLines.add(edit.end.line);
       }
-      case "prepend": {
-        if (edit.pos && !validate(edit.pos)) continue;
-        if (edit.lines.length === 0) {
-          throw new Error(
-            "[E_BAD_OP] Prepend with empty lines payload. Provide content to insert or remove the edit.",
-          );
-        }
-        break;
+      if (startOk && !endOk) {
+        retryLines.add(edit.pos.line);
       }
-      case "replace_text":
-        break;
+      if (!startOk || !endOk) continue;
+    } else if (!validate(edit.pos)) {
+      continue;
     }
+    const startLine = edit.pos.line;
+    const endLine = edit.end?.line ?? edit.pos.line;
+
+    // Check both boundaries for duplication
+    const checkBoundary = (candidate: string | undefined, boundary: string | undefined, label: string) => {
+      if (!candidate || !boundary) return;
+      const c = candidate.trim();
+      const b = boundary.trim();
+      if (c && /[\p{L}\p{N}]/u.test(c) && c === b) {
+        warnings.push(
+          `Potential boundary duplication ${label} ${describeEdit(edit)}: the replacement ${label === "after" ? "ends" : "starts"} with a line that matches the ${label === "after" ? "next surviving" : "preceding"} line after trim.`,
+        );
+      }
+    };
+    checkBoundary(edit.lines.at(-1), lineIndex.fileLines[endLine], "after");
+    if (startLine > 1) checkBoundary(edit.lines[0], lineIndex.fileLines[startLine - 2], "before");
   }
   if (mismatches.length) {
     throw new Error(formatMismatchError(mismatches, lineIndex.fileLines, retryLines));
@@ -866,9 +525,7 @@ export function applyHashlineEdits(
       continue;
     }
 
-    const spanKey = span.kind === "insert"
-      ? `insert:${span.boundary}:${span.replacement}`
-      : `replace:${span.start}:${span.end}:${span.replacement}`;
+    const spanKey = `replace:${span.start}:${span.end}:${span.replacement}`;
     if (seenSpanKeys.has(spanKey)) {
       continue;
     }
@@ -882,28 +539,13 @@ export function applyHashlineEdits(
     if (right.end !== left.end) {
       return right.end - left.end;
     }
-    if (left.kind !== right.kind) {
-      return left.kind === "replace" ? -1 : 1;
-    }
-    if (left.kind === "insert" && right.kind === "insert") {
-      return (right.boundary ?? -1) - (left.boundary ?? -1) || left.index - right.index;
-    }
     return left.index - right.index;
   });
 
   let result = content;
   for (const span of orderedSpans) {
     throwIfAborted(signal);
-    const replacement = span.insertMode === "append-empty-origin"
-      ? result.length === 0
-        ? span.replacement
-        : `\n${span.replacement}`
-      : span.insertMode === "prepend-empty-origin"
-        ? result.length === 0
-          ? span.replacement
-          : `${span.replacement}\n`
-        : span.replacement;
-    result = result.slice(0, span.start) + replacement + result.slice(span.end);
+    result = result.slice(0, span.start) + span.replacement + result.slice(span.end);
   }
 
   const changedRange = computeChangedLineRange(content, result);
@@ -982,10 +624,10 @@ export function formatHashlineRegion(
     .join("\n");
 }
 
-// ─── Legacy edit line range computation ─────────────────────────────
+// ─── Edit line range computation ────────────────────────────────────────
 
 /**
- * Compute first/last changed line numbers for legacy (oldText/newText) edits.
+ * Compute first/last changed line numbers from the edit result.
  * Uses character-level diff to locate the changed span, then maps to line
  * numbers in the result document so downstream anchor chaining works.
  */
