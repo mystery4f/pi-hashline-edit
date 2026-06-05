@@ -1,10 +1,16 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerEditTool } from "./src/edit";
 import { registerReadTool } from "./src/read";
+import { registerUndoTool, setCurrentTurn } from "./src/undo";
 
 export default function (pi: ExtensionAPI): void {
   registerReadTool(pi);
   registerEditTool(pi);
+  registerUndoTool(pi);
+
+  pi.on("turn_start", async (event) => {
+    setCurrentTurn(event.turnIndex);
+  });
 
   const debugValue = process.env.PI_HASHLINE_DEBUG;
   if (debugValue === "1" || debugValue === "true") {

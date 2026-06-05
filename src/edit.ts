@@ -25,6 +25,7 @@ import { resolveToCwd } from "./path-utils";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
 import { buildChangedResponse, buildNoopResponse } from "./edit-response";
+import { setLastEdit } from "./undo";
 
 const editEntrySchema = Type.Object(
   {
@@ -495,7 +496,7 @@ const editToolDefinition: EditToolDefinition = {
           warnings,
         });
       }
-
+      setLastEdit({ path, previousContent: originalNormalized });
       throwIfAborted(signal);
       await writeFileAtomically(
         absolutePath,

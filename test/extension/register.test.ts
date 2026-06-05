@@ -8,10 +8,11 @@ describe("extension registration", () => {
       registerTool(tool: { name: string }) {
         toolNames.push(tool.name);
       },
+      on() {},
     } as any;
 
     register(pi);
 
-    expect(toolNames.sort()).toEqual(["edit", "read"]);
+    expect(toolNames.sort()).toEqual(["edit", "read", "undo"]);
   });
 });
