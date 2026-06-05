@@ -75,12 +75,12 @@ export function formatHashlineReadPreview(
   if (totalLines === 0) {
     if (startLine === 1) {
       return {
-        text: "File is empty. Use edit with prepend or append and omit pos to insert content.",
+        text: "File is empty. Use the write tool to create initial content."
       };
     }
 
     return {
-      text: `Offset ${startLine} is beyond end of file (0 lines total). The file is empty. Use edit with prepend or append and omit pos to insert content.`,
+      text: `Offset ${startLine} is beyond end of file (0 lines total). The file is empty. Use the write tool to create initial content.`,
     };
   }
 

@@ -162,3 +162,21 @@ describe("computeEditPreview", () => {
     });
   });
 });
+  it("returns an error for empty files", async () => {
+    await withTempFile("empty.txt", "", async ({ cwd }) => {
+      vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "" });
+
+      const preview = await computeEditPreview(
+        {
+          path: "empty.txt",
+          edits: [{ range: ["1#AB", "1#AB"], lines: ["hello"] }],
+        },
+        cwd,
+      );
+
+      expect("error" in preview).toBe(true);
+      if (!("error" in preview)) return;
+      expect(preview.error).toContain("empty");
+      expect(preview.error).toContain("write tool");
+    });
+  });

@@ -18,6 +18,7 @@ import {
   resolveEditAnchors,
   type HashlineToolEdit,
   ANCHOR_SEP,
+  CONTENT_SEP,
 } from "./hashline";
 import { loadFileKindAndText } from "./file-kind";
 import { resolveToCwd } from "./path-utils";
@@ -109,6 +110,73 @@ export function normalizeEditItems(edits: Record<string, unknown>[]): HashlineTo
   });
 }
 
+type EditTargetResult =
+  | { ok: false; error: string; code?: string }
+  | {
+      ok: true;
+      normalized: string;
+      bom: string;
+      ending: "\r\n" | "\n";
+    };
+
+async function resolveEditTarget(
+  absolutePath: string,
+  path: string,
+  accessMode: number,
+): Promise<EditTargetResult> {
+  try {
+    await fsAccess(absolutePath, accessMode);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return { ok: false, error: `File not found: ${path}` };
+    }
+    if (code === "EACCES" || code === "EPERM") {
+      const action = accessMode & constants.W_OK ? "writable" : "readable";
+      return { ok: false, error: `File is not ${action}: ${path}` };
+    }
+    return { ok: false, error: `Cannot access file: ${path}` };
+  }
+
+  const file = await loadFileKindAndText(absolutePath);
+  if (file.kind === "directory") {
+    return {
+      ok: false,
+      error: `Path is a directory: ${path}. Use ls to inspect directories.`,
+    };
+  }
+  if (file.kind === "image") {
+    return {
+      ok: false,
+      error: `Path is an image file: ${path}. Hashline edit only supports text files.`,
+    };
+  }
+  if (file.kind === "binary") {
+    return {
+      ok: false,
+      error: `Path is a binary file: ${path} (${file.description}). Hashline edit only supports text files.`,
+    };
+  }
+
+  const { bom, text: content } = stripBom(file.text);
+  const normalized = normalizeToLF(content);
+  if (normalized.length === 0) {
+    return {
+      ok: false,
+      code: "E_EMPTY_FILE",
+      error: `File is empty: ${path}. The edit tool requires anchors from a read output, which an empty file cannot provide. Use the write tool to create initial content in an empty file.`,
+    };
+  }
+
+  return {
+    ok: true,
+    normalized,
+    bom,
+    ending: detectLineEnding(content),
+  };
+}
+
+
 type EditPreview = { diff: string } | { error: string };
 type EditRenderState = {
   argsKey?: string;
@@ -128,21 +196,66 @@ function getRenderablePreviewInput(args: unknown): EditRequestParams | null {
   return request.edits.length > 0 ? request : null;
 }
 
+function colorDiffLine(
+  line: string,
+  theme: { fg: (token: string, text: string) => string },
+): string {
+  const prefix = line[0];
+  if (prefix !== "-" && prefix !== "+" && prefix !== " ") {
+    return theme.fg("dim", line);
+  }
+  if (line.startsWith("---") || line.startsWith("+++")) {
+    return theme.fg("dim", line);
+  }
+
+  const sepIdx = line.indexOf(CONTENT_SEP);
+  if (sepIdx === -1) {
+    if (prefix === "-") return theme.fg("error", line);
+    if (prefix === "+") return theme.fg("success", line);
+    return theme.fg("dim", line);
+  }
+
+  const meta = line.slice(0, sepIdx); // prefix + lineNum + anchor/pad
+  const content = line.slice(sepIdx + CONTENT_SEP.length);
+
+  const digits = meta.match(/\d+/);
+  if (!digits) {
+    if (prefix === "-") return theme.fg("error", line);
+    if (prefix === "+") return theme.fg("success", line);
+    return theme.fg("dim", line);
+  }
+
+  const lineNumStart = meta.indexOf(digits[0]);
+  const lineNumEnd = lineNumStart + digits[0].length;
+  const prefixAndLineNum = meta.slice(0, lineNumEnd);
+  const anchorAndSep = meta.slice(lineNumEnd) + CONTENT_SEP;
+
+  if (prefix === "-") {
+    return (
+      theme.fg("error", prefixAndLineNum) +
+      theme.fg("muted", anchorAndSep) +
+      theme.fg("error", content)
+    );
+  }
+  if (prefix === "+") {
+    return (
+      theme.fg("success", prefixAndLineNum) +
+      theme.fg("muted", anchorAndSep) +
+      theme.fg("success", content)
+    );
+  }
+  return (
+    theme.fg("dim", prefixAndLineNum) +
+    theme.fg("muted", anchorAndSep) +
+    theme.fg("dim", content)
+  );
+}
 function colorDiffLines(
   lines: string[],
   theme: { fg: (token: string, text: string) => string },
 ): string[] {
-  return lines.map((line) => {
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      return theme.fg("success", line);
-    }
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      return theme.fg("error", line);
-    }
-    return theme.fg("dim", line);
-  });
+  return lines.map((line) => colorDiffLine(line, theme));
 }
-
 function formatPreviewDiff(
   diff: string,
   expanded: boolean,
@@ -150,7 +263,7 @@ function formatPreviewDiff(
 ): string {
   const lines = diff.split("\n");
   const maxLines = expanded ? 40 : 16;
-  const shown = colorDiffLines(lines.slice(0, maxLines), theme);
+  const shown = lines.slice(0, maxLines).map((line) => colorDiffLine(line, theme));
 
   if (lines.length > maxLines) {
     shown.push(theme.fg("muted", `... ${lines.length - maxLines} more diff lines`));
@@ -162,9 +275,8 @@ function formatResultDiff(
   diff: string,
   theme: { fg: (token: string, text: string) => string },
 ): string {
-  return colorDiffLines(diff.split("\n"), theme).join("\n");
+  return diff.split("\n").map((line) => colorDiffLine(line, theme)).join("\n");
 }
-
 function getRenderedEditTextContent(
   result: { content?: Array<{ type: string; text?: string }> },
 ): string | undefined {
@@ -251,36 +363,13 @@ export async function computeEditPreview(
   const absolutePath = resolveToCwd(path, cwd);
   const toolEdits = normalizeEditItems(params.edits);
 
-  try {
-    await fsAccess(absolutePath, constants.R_OK);
-  } catch (error: unknown) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      return { error: `File not found: ${path}` };
-    }
-    if (code === "EACCES" || code === "EPERM") {
-      return { error: `File is not readable: ${path}` };
-    }
-    return { error: `Cannot access file: ${path}` };
+  const target = await resolveEditTarget(absolutePath, path, constants.R_OK);
+  if (!target.ok) {
+    return { error: target.error };
   }
+  const originalNormalized = target.normalized;
 
   try {
-    const file = await loadFileKindAndText(absolutePath);
-    if (file.kind === "directory") {
-      return { error: `Path is a directory: ${path}. Use ls to inspect directories.` };
-    }
-    if (file.kind === "image") {
-      return {
-        error: `Path is an image file: ${path}. Hashline edit only supports text files.`,
-      };
-    }
-    if (file.kind === "binary") {
-      return {
-        error: `Path is a binary file: ${path} (${file.description}). Hashline edit only supports text files.`,
-      };
-    }
-
-    const originalNormalized = normalizeToLF(stripBom(file.text).text);
     const resolved = resolveEditAnchors(toolEdits);
     const result = applyHashlineEdits(originalNormalized, resolved).content;
 
@@ -435,48 +524,20 @@ const editToolDefinition: EditToolDefinition = {
     const mutationTargetPath = await resolveMutationTargetPath(absolutePath);
     return withFileMutationQueue(mutationTargetPath, async () => {
       throwIfAborted(signal);
-      try {
-        await fsAccess(absolutePath, constants.R_OK | constants.W_OK);
-      } catch (error: unknown) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code === "ENOENT") {
-          throw new Error(`File not found: ${path}`);
-        }
-        if (code === "EACCES" || code === "EPERM") {
-          throw new Error(`File is not writable: ${path}`);
-        }
-        throw new Error(`Cannot access file: ${path}`);
+      const target = await resolveEditTarget(absolutePath, path, constants.R_OK | constants.W_OK);
+      if (!target.ok) {
+        const prefix = target.code ? `[${target.code}] ` : "";
+        throw new Error(`${prefix}${target.error}`);
       }
-
-      throwIfAborted(signal);
-      const file = await loadFileKindAndText(absolutePath);
-      if (file.kind === "directory") {
-        throw new Error(`Path is a directory: ${path}. Use ls to inspect directories.`);
-      }
-      if (file.kind === "image") {
-        throw new Error(
-          `Path is an image file: ${path}. Hashline edit only supports text files.`,
-        );
-      }
-      if (file.kind === "binary") {
-        throw new Error(
-          `Path is a binary file: ${path} (${file.description}). Hashline edit only supports text files.`,
-        );
-      }
-
-      throwIfAborted(signal);
-      const { bom, text: content } = stripBom(file.text);
-      const originalEnding = detectLineEnding(content);
-      const originalNormalized = normalizeToLF(content);
+      const { bom, normalized: originalNormalized, ending: originalEnding } = target;
 
       const resolved = resolveEditAnchors(toolEdits);
+
 
       const anchorResult = applyHashlineEdits(originalNormalized, resolved, signal);
       const result = anchorResult.content;
       const warnings = anchorResult.warnings;
-      const originalLineCount = originalNormalized.length === 0
-        ? 0
-        : originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
+      const originalLineCount = originalNormalized.split("\n").length - (originalNormalized.endsWith("\n") ? 1 : 0);
       if (result.length === 0 && originalLineCount > 50) {
         throw new Error(
           "[E_WOULD_EMPTY] This edit would delete the entire file. The edit tool does not allow full-file deletion for files with more than 50 lines. If you truly intend to clear the file, use the write tool to overwrite it with an empty string.",

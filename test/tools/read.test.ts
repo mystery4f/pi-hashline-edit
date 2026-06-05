@@ -46,7 +46,7 @@ describe("formatHashlineReadPreview", () => {
     const result = formatHashlineReadPreview("", { offset: 1 });
 
     expect(result.text).toContain("File is empty");
-    expect(result.text).toContain("prepend or append");
+    expect(result.text).toContain("write tool");
     expect(result.text).not.toContain("1#");
   });
 

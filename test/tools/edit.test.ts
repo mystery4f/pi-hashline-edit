@@ -152,10 +152,31 @@ describe("registerEditTool", () => {
       expect(rendered).not.toContain("Changes: +1 -1");
       expect(rendered).not.toContain("Diff preview:");
       expect(rendered).not.toContain("```diff");
-      expect(rendered).toContain(`+2#${computeLineHash(["aaa", "BBB", "ccc"], 1)}│BBB`);
+      const hash = computeLineHash(["aaa", "BBB", "ccc"], 1);
+      expect(rendered).toContain(`[success]+2[/success][muted]#${hash}│[/muted][success]BBB[/success]`);
       expect(rendered).not.toContain("Updated sample.txt");
       expect(rendered).not.toContain("```text");
       expect(result.details?.diff).toContain("+2");
     });
   });
 });
+  it("rejects edits on empty files with E_EMPTY_FILE", async () => {
+    await withTempFile("empty.txt", "", async ({ cwd }) => {
+      const { pi, getTool } = makeFakePiRegistry();
+      registerEditTool(pi);
+      const editTool = getTool("edit");
+
+      await expect(
+        editTool.execute(
+          "e1",
+          {
+            path: "empty.txt",
+            edits: [{ range: ["1#AB", "1#AB"], lines: ["hello"] }],
+          },
+          undefined,
+          undefined,
+          { cwd } as any,
+        ),
+      ).rejects.toThrow(/\[E_EMPTY_FILE\]/);
+    });
+  });
