@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1
+
+### Added
+- **Undo tool.** Reverts the most recent hashline edit within the last 3 conversation turns. Useful when the model realizes an edit was wrong before the context window scrolls away.
+- **[E_EMPTY_FILE] guard.** Rejects edits on empty files with a clear error directing the model to the write tool.
+- **Dimmed anchors in diff output.** Diff rendering splits each line at `│` and renders the anchor/hash portion in a muted color, making line content stand out from metadata.
+
+### Changed
+- **Strip dead operations.** Removed leftover `append`, `prepend`, and `replace_text` references from the hashline engine (already unsupported by the schema).
+- **Refactored edit target resolution.** Extracted `resolveEditTarget()` so `computeEditPreview` and `execute` share the exact same access-check → kind-validation → BOM-strip → normalize → empty-file-guard pipeline.
+
 ## 0.8.0
 
 ### Breaking

@@ -18,6 +18,7 @@ import { resolveToCwd } from "./path-utils";
 import { throwIfAborted } from "./runtime";
 import { getFileSnapshot } from "./snapshot";
 import { buildChangedResponse } from "./edit-response";
+import { PACKAGE_INFO } from "./package-info";
 
 const UNDO_DESC = readFileSync(
   new URL("../tool-descriptions/undo.md", import.meta.url),
@@ -178,7 +179,7 @@ const undoToolDefinition: ToolDefinition<
           content: [{ type: "text", text: "No changes needed. File already matches the pre-edit state." }],
           details: {
             diff: "",
-            package: { name: "@jerryan/pi-hashline-edit", version: "0.8.0" },
+            package: PACKAGE_INFO,
           },
         };
       }
