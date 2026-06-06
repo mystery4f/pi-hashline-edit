@@ -11,6 +11,10 @@
 - **Strip dead operations.** Removed leftover `append`, `prepend`, and `replace_text` references from the hashline engine (already unsupported by the schema).
 - **Refactored edit target resolution.** Extracted `resolveEditTarget()` so `computeEditPreview` and `execute` share the exact same access-check → kind-validation → BOM-strip → normalize → empty-file-guard pipeline.
 
+## 0.8.2
+
+### Reverted
+- **Dimmed anchors in diff output.** Reverted the v0.8.1 change that split diff lines at `│` and rendered the anchor/hash in a separate color. The visual break was choppy and drew attention to metadata that should not be highlighted. Diff lines are now colored monolithically by prefix (`+` success, `-` error, ` ` dim) as before.
 ## 0.8.0
 
 ### Breaking
