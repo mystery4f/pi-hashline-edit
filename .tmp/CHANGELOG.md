@@ -1,26 +1,5 @@
 # Changelog
 
-## 0.9.0
-
-### Changed
-- **Split hashline engine into `HashlineFile` + composable phases.** Replaced the monolithic `applyHashlineEdits(content, edits)` with three focused functions:
-  - `buildHashlineFile(content)` — one-time preprocessing: splits lines, computes context hashes, builds byte-offset index.
-  - `validateAnchors(file, edits)` — checks ranges, OOB, and hash mismatches. Returns a discriminated union (`{ ok: true } | { ok: false, kind: "range" } | { ok: false, kind: "stale" }`).
-  - `resolveEditSpans(file, edits)` — noop detection, boundary-duplication warnings, span resolution, overlap detection.
-  - `applySpans(file, spans)` — pure application: sorts spans bottom-up, slices content, returns a new `HashlineFile`.
-- **Explicit control flow in merge fallback.** The `edit` tool's execute path no longer uses exception-driven branching (`try { apply } catch { if message.includes("[E_STALE_ANCHOR]") ... }`). It calls `validateAnchors` directly and handles each outcome explicitly.
-- **`read-snapshot.ts`** — New single-slot in-memory snapshot store. Stores the most recent non-raw `read` as a `HashlineFile` (pre-computed lines, hashes, and byte offsets). When anchors are stale against the live file, the 3-way merge fallback validates against this snapshot and rebases the edit patch.
-- **Path-resolved snapshot keys.** Snapshots are keyed by absolute path, so a `read` with a relative path and an `edit` with an absolute path still match.
-- **Warnings passed through `details`.** `details.warnings` is now a structured string array. The TUI render path consumes it directly instead of regex-parsing the flat `text` output back out.
-
-### Added
-- **`src/merge.ts`** — `threeWayMerge(base, baseEdited, current)` using `diff.structuredPatch` with `fuzzFactor: 0`. Called when anchors are stale against the live file but valid against the snapshot.
-- **Exhaustive validation handling.** `edit.ts` uses `if/else if/else` over `validateAnchors` outcomes. An unhandled kind throws `[E_INTERNAL]` to fail loud if new error types are added later.
-### Changed
-- **Lightweight preview.** `computeEditPreview` no longer runs the full edit engine or generates diffs. It returns a human summary like `Editing 2 block(s):\n  5#AB → 8#CD`.
-- **Noop edits tracked in `resolveEditSpans`.** Previously tracked inside `applyHashlineEdits` during span resolution. Now part of the `SpanResolution` result.
-
-
 ## 0.8.3
 
 ### Changed

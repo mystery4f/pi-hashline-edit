@@ -1,11 +1,36 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyHashlineEdits,
+  buildHashlineFile,
+  validateAnchors,
+  resolveEditSpans,
+  applySpans,
+  formatMismatchError,
   computeLineHash,
   resolveEditAnchors,
   type Anchor,
+  type HashlineEdit,
   type HashlineToolEdit,
 } from "../../src/hashline";
+
+function applyHashlineEdits(content: string, edits: HashlineEdit[], signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("AbortError");
+  const file = buildHashlineFile(content);
+  const validation = validateAnchors(file, edits);
+  if (!validation.ok) {
+    if (validation.kind === "range") throw new Error(validation.message);
+    throw new Error(formatMismatchError(validation.mismatches, file.lines, validation.retryLines));
+  }
+  const spanResult = resolveEditSpans(file, edits);
+  if (!spanResult.ok) throw new Error(spanResult.message);
+  const applied = applySpans(file, spanResult.spans);
+  return {
+    content: applied.file.content,
+    firstChangedLine: applied.firstChangedLine,
+    lastChangedLine: applied.lastChangedLine,
+    warnings: spanResult.warnings.length ? spanResult.warnings : undefined,
+    noopEdits: spanResult.noopEdits.length ? spanResult.noopEdits : undefined,
+  };
+}
 
 function makeTag(content: string, lineNum: number): Anchor {
   const fileLines = content.split("\n");
@@ -51,6 +76,19 @@ describe("applyHashlineEdits — error handling", () => {
     expect(() => applyHashlineEdits(content, edits as any)).toThrow(/2 stale anchors: 1#XX, 3#YY\./);
   });
 
+  it("range error takes priority over stale anchors", () => {
+    const content = "aaa\nbbb\nccc";
+    const edits = [
+      { op: "replace", pos: { line: 1, hash: "XX" }, lines: ["A"] },
+      {
+        op: "replace",
+        pos: makeTag(content, 3),
+        end: makeTag(content, 1),
+        lines: ["x"],
+      },
+    ];
+    expect(() => applyHashlineEdits(content, edits as any)).toThrow(/must be <= end line/);
+  });
   it("mismatch message exposes retryable >>> LINE#HASH snippets", () => {
     expect(() =>
       applyHashlineEdits("aaa", [

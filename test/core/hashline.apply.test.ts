@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { applyHashlineEdits, computeAffectedLineRange, computeLineHash, type HashlineEdit } from "../../src/hashline";
+import { buildHashlineFile, validateAnchors, resolveEditSpans, applySpans, formatMismatchError, computeAffectedLineRange, computeLineHash, type HashlineEdit } from "../../src/hashline";
+
+function applyHashlineEdits(content: string, edits: HashlineEdit[], signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("AbortError");
+  const file = buildHashlineFile(content);
+  const validation = validateAnchors(file, edits);
+  if (!validation.ok) {
+    if (validation.kind === "range") throw new Error(validation.message);
+    throw new Error(formatMismatchError(validation.mismatches, file.lines, validation.retryLines));
+  }
+  const spanResult = resolveEditSpans(file, edits);
+  if (!spanResult.ok) throw new Error(spanResult.message);
+  const applied = applySpans(file, spanResult.spans);
+  return {
+    content: applied.file.content,
+    firstChangedLine: applied.firstChangedLine,
+    lastChangedLine: applied.lastChangedLine,
+    warnings: spanResult.warnings.length ? spanResult.warnings : undefined,
+    noopEdits: spanResult.noopEdits.length ? spanResult.noopEdits : undefined,
+  };
+}
 
 function makeTag(content: string, line: number) {
   const fileLines = content.split("\n");

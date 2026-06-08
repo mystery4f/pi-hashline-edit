@@ -17,7 +17,7 @@ describe("computeEditPreview", () => {
     vi.mocked(fileKindMod.classifyFileKind).mockReset();
   });
 
-  it("returns a diff for strict hashline edits before execution", async () => {
+  it("returns a summary for edits before execution", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "aaa\nbbb\nccc\n" });
 
@@ -34,13 +34,13 @@ describe("computeEditPreview", () => {
       if (!("diff" in preview)) {
         return;
       }
-      expect(preview.diff).toContain("+2#");
-      expect(preview.diff).toContain("│BBB");
+      expect(preview.diff).toContain("Editing 1 block(s)");
+      expect(preview.diff).toContain("→");
     });
   });
 
 
-  it("still computes a preview diff for read-only files", async () => {
+  it("still computes a preview summary for read-only files", async () => {
     await withTempFile("sample.txt", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "aaa\nbbb\nccc\n" });
 
@@ -60,7 +60,7 @@ describe("computeEditPreview", () => {
         if (!("diff" in preview)) {
           return;
         }
-        expect(preview.diff).toContain("│BBB");
+        expect(preview.diff).toContain("Editing 1 block(s)");
       } finally {
         await chmod(path, 0o644);
       }
@@ -87,7 +87,7 @@ describe("computeEditPreview", () => {
       if (!("diff" in preview)) {
         return;
       }
-      expect(preview.diff).toContain("│BBB");
+      expect(preview.diff).toContain("Editing 1 block(s)");
       expect(vi.mocked(fileKindMod.classifyFileKind)).not.toHaveBeenCalled();
     });
   });
@@ -161,7 +161,7 @@ describe("computeEditPreview", () => {
       expect(state.preview ?? null).toBeNull();
     });
   });
-});
+
   it("returns an error for empty files", async () => {
     await withTempFile("empty.txt", "", async ({ cwd }) => {
       vi.mocked(fileKindMod.loadFileKindAndText).mockResolvedValue({ kind: "text", text: "" });
@@ -180,3 +180,4 @@ describe("computeEditPreview", () => {
       expect(preview.error).toContain("write tool");
     });
   });
+});
