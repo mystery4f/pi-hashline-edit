@@ -19,6 +19,7 @@ import {
   applySpans,
   resolveEditAnchors,
   type HashlineToolEdit,
+  type HashlineEdit,
   formatMismatchError,
   ANCHOR_SEP,
   CONTENT_SEP,
@@ -31,6 +32,7 @@ import { buildChangedResponse, buildNoopResponse } from "./edit-response";
 import { setLastEdit } from "./undo";
 import { getReadSnapshot } from "./read-snapshot";
 import { threeWayMerge } from "./merge";
+import { partitionExact, fuzzyMatch } from "./fuzzy-match";
 
 const editEntrySchema = Type.Object(
   {
@@ -496,33 +498,89 @@ const editToolDefinition: EditToolDefinition = {
         if (validation.kind === "range") {
           throw new Error(validation.message);
         } else if (validation.kind === "stale") {
+          // Multi-tier stale-anchor resolution
+          const exactResult = partitionExact(resolved, currentFile);
           const snapshot = getReadSnapshot(absolutePath);
-          if (snapshot) {
-            const snapValidation = validateAnchors(snapshot.file, resolved);
-            if (snapValidation.ok) {
-              const snapSpans = resolveEditSpans(snapshot.file, resolved);
-              if (snapSpans.ok) {
-                const snapApplied = applySpans(snapshot.file, snapSpans.spans);
-                const mergedContent = threeWayMerge(
-                  snapshot.file.content,
-                  snapApplied.file.content,
-                  currentFile.content,
-                );
-                if (mergedContent !== null) {
-                  result = mergedContent;
-                  warnings = [
-                    "[MERGED] File changed since last read. Edits were rebased onto the current version. Please review the diff carefully.",
-                    ...(snapSpans.warnings ?? []),
-                  ];
-                  noopEdits = snapSpans.noopEdits;
-                  merged = true;
-                }
+          let remaining = exactResult.unmatched;
+          let allWarnings: string[] = [];
+          let fuzzyEdits: HashlineEdit[] = [];
+
+          // Tier 2: fuzzy match against current (needs snapshot for content comparison)
+          if (remaining.length > 0 && snapshot) {
+            const fuzzyResult = fuzzyMatch(remaining, currentFile, snapshot.file);
+            fuzzyEdits = fuzzyResult.matched;
+            allWarnings.push(...fuzzyResult.warnings);
+            remaining = fuzzyResult.unmatched;
+          }
+
+          // Fuzzy resolved all remaining — apply exact + fuzzy to current (no merge)
+          if (remaining.length === 0) {
+            const currentEdits = [...exactResult.matched, ...fuzzyEdits];
+            const spanResult = resolveEditSpans(currentFile, currentEdits);
+            if (!spanResult.ok) throw new Error(spanResult.message);
+            const applied = applySpans(currentFile, spanResult.spans);
+            result = applied.file.content;
+            warnings = [...allWarnings, ...(spanResult.warnings ?? [])];
+            noopEdits = spanResult.noopEdits;
+            merged = true;
+          }
+
+          // Tier 3: snapshot match for any remaining edits
+          if (!merged && snapshot && remaining.length > 0) {
+            const snapResult = partitionExact(remaining, snapshot.file);
+            if (snapResult.unmatched.length === 0) {
+              const currentEdits = [...exactResult.matched, ...fuzzyEdits];
+              const snapshotEdits = snapResult.matched;
+
+              const currentSpans = resolveEditSpans(currentFile, currentEdits);
+              if (!currentSpans.ok) throw new Error(currentSpans.message);
+
+              const snapSpans = resolveEditSpans(snapshot.file, snapshotEdits);
+              if (!snapSpans.ok) throw new Error(snapSpans.message);
+
+              allWarnings.push(
+                "[MERGED] File changed since last read. Edits were rebased onto the current version. Please review the diff carefully.",
+              );
+
+              const currentApplied = applySpans(currentFile, currentSpans.spans);
+              const snapApplied = applySpans(snapshot.file, snapSpans.spans);
+
+              const mergedContent = threeWayMerge(
+                snapshot.file.content,
+                snapApplied.file.content,
+                currentApplied.file.content,
+              );
+
+              if (mergedContent !== null) {
+                result = mergedContent;
+                warnings = [
+                  ...allWarnings,
+                  ...(currentSpans.warnings ?? []),
+                  ...(snapSpans.warnings ?? []),
+                ];
+                noopEdits = [
+                  ...(currentSpans.noopEdits ?? []),
+                  ...(snapSpans.noopEdits ?? []),
+                ];
+                merged = true;
               }
             }
           }
 
           if (!merged) {
-            throw new Error(formatMismatchError(validation.mismatches, currentFile.lines, validation.retryLines));
+            const retryLines = new Set<number>();
+            const mismatches = remaining.flatMap((e) => {
+              const refs = e.end ? [e.pos, e.end] : [e.pos];
+              return refs.map((r) => {
+                retryLines.add(r.line);
+                return {
+                  line: r.line,
+                  expected: r.hash,
+                  actual: currentFile.lineHashes[r.line - 1] ?? "OOB",
+                };
+              });
+            });
+            throw new Error(formatMismatchError(mismatches, currentFile.lines, retryLines));
           }
         } else {
           // Exhaustiveness: if validateAnchors adds a new error kind, fail loud

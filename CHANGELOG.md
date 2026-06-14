@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+- **Fuzzy anchor relocation.** When anchors are stale but the original content still exists at a nearby position, the fuzzy matcher searches ±1 line for single-line edits and ±2 lines for multi-line ranges. Both endpoints shift together. Only a single unique match is accepted; zero or multiple matches skip to the next tier.
+- **`partitionExact(edits, file)`** — splits edits by hash validity against a file. Shared by all three matcher tiers.
+- **`fuzzyMatch(edits, currentFile, snapshotFile)`** — content-based relocation using the snapshot as ground truth. Relocated anchors receive fresh hashes computed from the current file's context.
+
+### Changed
+- **Multi-tier stale-anchor resolution.** The `edit` tool now tries three tiers in order: exact match on the live file, fuzzy relocation on the live file, snapshot match + 3-way merge. Edits are split across tiers within a single batch. Any unresolved edits reject the entire request.
+- **Single-line fuzzy offset reduced to ±1.** Shorter search window for single-line edits avoids accidental relocation to a semantically different but textually identical line.
+
+
 ## 0.9.0
 
 ### Changed
