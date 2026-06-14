@@ -232,12 +232,6 @@ function formatPreviewDiff(
   return shown.join("\n");
 }
 
-function formatResultDiff(
-  diff: string,
-  theme: { fg: (token: string, text: string) => string },
-): string {
-  return colorDiffLines(diff.split("\n"), theme).join("\n");
-}
 function getRenderedEditTextContent(
   result: { content?: Array<{ type: string; text?: string }> },
 ): string | undefined {
@@ -262,13 +256,34 @@ function isAppliedChangedResult(
 function buildAppliedChangedResultText(
   details: HashlineEditToolDetails | undefined,
   preview: EditPreview | undefined,
+  expanded: boolean,
   theme: { fg: (token: string, text: string) => string },
 ): string | undefined {
   const previewDiff = preview && !("error" in preview) ? preview.diff : undefined;
   const sections: string[] = [];
 
   if (details?.diff && details.diff !== previewDiff) {
-    sections.push(formatResultDiff(details.diff, theme));
+    const diffLines = details.diff.split("\n");
+    const maxLines = expanded ? Infinity : 16;
+    const shown = diffLines.slice(0, maxLines);
+    const diffText = colorDiffLines(shown, theme).join("\n");
+
+    if (diffLines.length > maxLines) {
+      sections.push(diffText + `\n${theme.fg("muted", `... ${diffLines.length - maxLines} more diff lines`)}`);
+    } else {
+      sections.push(diffText);
+    }
+  }
+
+  if (details?.metrics?.added_lines !== undefined) {
+    const added = details.metrics.added_lines ?? 0;
+    const removed = details.metrics.removed_lines ?? 0;
+    const parts: string[] = [];
+    if (added) parts.push(`${added} insertion${added !== 1 ? "s" : ""}(+)`);
+    if (removed) parts.push(`${removed} deletion${removed !== 1 ? "s" : ""}(-)`);
+    if (parts.length) {
+      sections.push(theme.fg("accent", parts.join(", ")));
+    }
   }
 
   if (details?.warnings?.length) {
@@ -441,6 +456,7 @@ const editToolDefinition: EditToolDefinition = {
       const appliedChangedText = buildAppliedChangedResultText(
         typedResult.details,
         previewBeforeResult,
+        context.expanded,
         theme,
       );
       if (!appliedChangedText) {

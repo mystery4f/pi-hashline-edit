@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1
+
+### Changed
+- **Compact/expanded diff in result card.** The edit result now truncates the diff to 16 lines in compact mode and shows the full diff when expanded.
+- **Change summary line.** Shows `22 insertions(+), 1 deletion(-)` between the diff and warnings.
+
+
 ## 0.10.0
 
 ### Added
